@@ -618,8 +618,8 @@ body[data-gradient="solid"]::before{display:none}
           <p id="authGateSubtitle">Sign in to pick up where you left off.</p>
         </div>
         <form id="authGateFields" onsubmit="event.preventDefault();walletZenSupabaseSubmit()">
-          <label class="wz-input-label" for="authGateEmail">Email address</label>
-          <div class="wz-input-wrap"><span class="wz-input-icon">✉</span><input id="authGateEmail" type="email" autocomplete="email" placeholder="you@example.com" required></div>
+          <label id="authGateEmailLabel" class="wz-input-label" for="authGateEmail">Email address</label>
+          <div id="authGateEmailWrap" class="wz-input-wrap"><span class="wz-input-icon">✉</span><input id="authGateEmail" type="email" autocomplete="email" placeholder="you@example.com" required></div>
           <div class="wz-password-label"><label id="authGatePasswordLabel" class="wz-input-label" for="authGatePassword">Password</label><button type="button" id="authGateForgot" class="wz-text-button" onclick="walletZenSupabaseReset()">Forgot password?</button></div>
           <div class="wz-input-wrap"><span class="wz-input-icon">⌑</span><input id="authGatePassword" type="password" autocomplete="current-password" placeholder="Enter your password" minlength="6" required><button type="button" id="authGatePasswordToggle" class="wz-password-toggle" onclick="walletZenTogglePassword()" aria-label="Show password">◉</button></div>
           <button type="submit" id="authGateSubmit" class="wz-primary-button"><span id="authGateSubmitText">Sign in</span><span class="wz-button-arrow">↗</span></button>
