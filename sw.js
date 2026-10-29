@@ -1,9 +1,11 @@
 // WalletZen service worker — offline support + installability
-const CACHE = 'walletzen-v3';
+const CACHE = 'walletzen-v4';
 const CORE = [
   './',
   'index.html',
   'manifest.json',
+  'supabase-config.js',
+  'walletzen-supabase.js',
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/icon-maskable-512.png'

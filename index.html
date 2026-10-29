@@ -533,9 +533,110 @@ body[data-gradient="solid"]::before{display:none}
 .sector-row{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius2);margin-bottom:8px}
 @media (max-width:640px){.biz-grid{grid-template-columns:1fr}.biz-hero{padding:18px 16px;border-radius:22px}.biz-hero-grid{gap:8px}.detail-grid{grid-template-columns:repeat(2,1fr)}.biz-hero-grid>div{padding:10px}.biz-hero-grid b{font-size:.82rem}.detail-grid b{font-size:.78rem}}
 .account-action{padding:9px 12px;border-radius:12px;background:rgba(var(--accent-rgb),.12);border:1px solid var(--border);color:var(--accent);font-size:.8rem;font-weight:700;white-space:nowrap}.cloud-status{font-size:.72rem;color:var(--text3);padding:0 12px 8px}.auth-panel{width:min(440px,calc(100vw - 28px));max-height:90dvh;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:24px;box-shadow:var(--shadow3)}.auth-panel h2{font-family:var(--font-display);font-size:1.35rem;margin-bottom:6px}.auth-sub{font-size:.84rem;color:var(--text2);margin-bottom:20px;line-height:1.5}.auth-field{display:flex;flex-direction:column;gap:7px;margin-bottom:13px}.auth-field label{font-size:.78rem;color:var(--text2);font-weight:700}.auth-field input{width:100%;padding:12px 13px;border-radius:11px;border:1px solid var(--border);background:var(--surface2);color:var(--text)}.auth-actions{display:flex;flex-direction:column;gap:10px;margin-top:16px}.auth-btn{width:100%;padding:12px 14px;border-radius:12px;background:var(--accent);color:var(--on-accent);font-weight:800}.auth-btn.secondary{background:var(--surface2);border:1px solid var(--border);color:var(--text)}.auth-message{font-size:.8rem;line-height:1.45;margin-top:12px;color:var(--text2);overflow-wrap:anywhere}.auth-message.error{color:var(--red)}.auth-message.success{color:var(--green)}.auth-close{float:right;width:32px;height:32px;border-radius:9px;background:var(--surface2);color:var(--text2)}.auth-footer{font-size:.72rem;color:var(--text3);line-height:1.5;margin-top:16px}@media(max-width:600px){.account-action{padding:8px;font-size:.74rem}.auth-panel{padding:20px}}
+
+/* WalletZen entry screen. Tune these variables to adjust layout proportions. */
+:root{--wz-auth-card-max:490px;--wz-auth-layout-max:580px;--wz-auth-card-padding:clamp(22px,4.2vw,42px);--wz-auth-radius:27px;--wz-auth-background-position:center center}
+.walletzen-app-shell[hidden]{display:none!important}
+.wz-auth-screen[hidden]{display:none!important}
+.wz-auth-screen{position:fixed;inset:0;z-index:5000;display:grid;place-items:center;isolation:isolate;overflow-x:hidden;overflow-y:auto;min-height:100vh;min-height:100svh;padding:max(20px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));background:#050807;color:#f4f8f4;font-family:var(--font-body);box-sizing:border-box}
+.wz-auth-atmosphere{position:absolute;inset:0;z-index:-1;overflow:hidden;background:radial-gradient(ellipse at 8% 14%,rgba(87,117,91,.22),transparent 32%),radial-gradient(ellipse at 90% 22%,rgba(188,159,115,.13),transparent 28%),linear-gradient(115deg,#080b09 0%,#121613 44%,#080a09 76%,#030504 100%)}
+.wz-auth-atmosphere:before{content:"";position:absolute;inset:-12%;background:linear-gradient(90deg,transparent 0 9%,rgba(255,255,255,.045) 9.2%,transparent 9.8% 21%,rgba(255,255,255,.025) 21.4%,transparent 22% 73%,rgba(255,255,255,.045) 73.5%,transparent 74% 91%,rgba(255,255,255,.025) 91.5%,transparent 92%),linear-gradient(180deg,transparent 0 64%,rgba(0,0,0,.45) 100%);transform:perspective(850px) rotateY(-7deg) scale(1.12);filter:blur(.2px)}
+.wz-auth-atmosphere:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.52),transparent 25%,transparent 75%,rgba(0,0,0,.45)),linear-gradient(0deg,rgba(0,0,0,.58),transparent 28%,transparent 78%,rgba(0,0,0,.22))}
+.wz-auth-grid{position:absolute;left:-15%;right:-15%;bottom:-34%;height:64%;opacity:.2;background-image:linear-gradient(rgba(197,176,137,.22) 1px,transparent 1px),linear-gradient(90deg,rgba(197,176,137,.22) 1px,transparent 1px);background-size:58px 58px;transform:perspective(430px) rotateX(61deg);transform-origin:top center;mask-image:linear-gradient(0deg,#000,transparent 83%)}
+.wz-lightbar{position:absolute;top:-15%;height:70%;width:2px;background:linear-gradient(180deg,transparent,rgba(213,189,148,.72),transparent);box-shadow:0 0 24px rgba(215,187,140,.22);transform:rotate(27deg)}
+.wz-lightbar-a{left:15%;opacity:.35}.wz-lightbar-b{right:11%;opacity:.8;height:56%;width:3px;transform:rotate(63deg);top:-17%}
+.wz-orbit{position:absolute;border:1px solid rgba(212,189,151,.13);border-radius:50%;transform:rotate(-25deg);width:min(74vw,900px);aspect-ratio:1.7;left:50%;top:50%;translate:-50% -50%}
+.wz-orbit-b{width:min(62vw,760px);aspect-ratio:1.4;rotate:26deg;opacity:.5}
+.wz-auth-layout{width:min(100%,var(--wz-auth-layout-max));margin:auto;display:flex;flex-direction:column;align-items:stretch;gap:20px;padding:5px 0}
+.wz-auth-brand{display:flex;align-items:center;gap:12px;margin:0 auto 2px;width:min(100%,var(--wz-auth-card-max));padding:0 5px}
+.wz-brand-mark{width:47px;height:47px;display:grid;place-items:center;border-radius:14px;border:1px solid rgba(222,197,155,.47);background:linear-gradient(145deg,rgba(255,255,255,.13),rgba(255,255,255,.025));box-shadow:inset 0 1px rgba(255,255,255,.2),0 8px 28px rgba(0,0,0,.25);font-family:var(--font-display);font-size:1.05rem;letter-spacing:-2px;font-weight:800;color:#fff}
+.wz-brand-mark span{color:#d5bd91}
+.wz-brand-name{font-family:var(--font-display);font-size:1.36rem;letter-spacing:-.7px;font-weight:800;line-height:1.1}
+.wz-brand-name span{color:#d8c19a}
+.wz-brand-tag{font-size:.58rem;letter-spacing:2.1px;color:#89958b;margin-top:5px;font-weight:700}
+.wz-auth-card{width:100%;max-width:var(--wz-auth-card-max);margin:0 auto;padding:var(--wz-auth-card-padding);box-sizing:border-box;border:1px solid rgba(226,223,212,.19);border-radius:var(--wz-auth-radius);background:linear-gradient(145deg,rgba(30,33,32,.91),rgba(11,13,12,.94) 75%);box-shadow:0 35px 100px rgba(0,0,0,.52),inset 0 1px rgba(255,255,255,.065);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px)}
+.wz-auth-kicker{display:flex;align-items:center;gap:9px;font-size:.63rem;font-weight:800;letter-spacing:1.8px;color:#b4b9b4;margin-bottom:27px}
+.wz-kicker-dot{height:7px;width:7px;flex:0 0 7px;border-radius:50%;background:#d6bd91;box-shadow:0 0 13px rgba(214,189,145,.6)}
+.wz-auth-heading h1{font-family:var(--font-display);font-size:clamp(2rem,5.2vw,2.65rem);line-height:1.12;letter-spacing:-1.5px;font-weight:600;margin:0 0 9px;color:#f6f7f4}
+.wz-auth-heading h1 span{color:#d6bf98}
+.wz-auth-heading p{font-size:.92rem;line-height:1.6;color:#9ba39d;margin:0 0 27px}
+.wz-input-label{display:block;font-size:.75rem;font-weight:700;letter-spacing:.2px;color:#d3d8d3;margin:0 0 8px}
+.wz-input-wrap{width:100%;display:flex;align-items:center;gap:12px;min-height:57px;padding:0 15px;margin:0 0 19px;border-radius:14px;border:1px solid rgba(255,255,255,.085);background:rgba(255,255,255,.055);box-sizing:border-box;transition:border-color .2s,background .2s}
+.wz-input-wrap:focus-within{border-color:rgba(213,189,145,.7);background:rgba(255,255,255,.075)}
+.wz-input-icon{font-size:1.14rem;color:#aeb5ae;flex:0 0 auto;width:19px;text-align:center}
+.wz-input-wrap input{width:100%;min-width:0;border:0!important;background:transparent!important;box-shadow:none!important;color:#f6f7f4!important;font-size:.9rem;padding:16px 0!important;outline:none!important}
+.wz-input-wrap input::placeholder{color:#727a73}
+.wz-password-label{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.wz-password-toggle{font-size:1rem;color:#9da49d;padding:8px;flex:0 0 auto}
+.wz-text-button{color:#d5bd91;background:none;border:0;padding:4px 0;font:inherit;font-size:.78rem;font-weight:700;cursor:pointer}
+.wz-text-button:hover{color:#f2dfbb}
+.wz-primary-button{width:100%;min-height:58px;border-radius:14px;padding:0 19px;margin-top:7px;display:flex;align-items:center;justify-content:space-between;gap:14px;color:#f8f6f0;font-size:.92rem;font-weight:800;background:linear-gradient(105deg,#222724 0%,#4c483c 48%,#b49a6e 100%);border:1px solid rgba(222,198,158,.36);box-shadow:0 8px 22px rgba(0,0,0,.22);transition:transform .18s,filter .18s}
+.wz-primary-button:hover{filter:brightness(1.12);transform:translateY(-1px)}
+.wz-primary-button:disabled,.wz-google-button:disabled{opacity:.58;cursor:wait;transform:none}
+.wz-button-arrow{font-size:1.4rem;font-weight:400}
+.wz-auth-divider{display:flex;align-items:center;gap:13px;margin:25px 0 18px;color:#858d86}
+.wz-auth-divider span{height:1px;background:rgba(255,255,255,.09);flex:1}
+.wz-auth-divider em{font-style:normal;font-size:.74rem;white-space:nowrap}
+.wz-google-button{display:flex;align-items:center;justify-content:center;gap:13px;position:relative;width:100%;min-height:54px;padding:10px 16px;border:1px solid rgba(255,255,255,.12);border-radius:14px;background:rgba(255,255,255,.035);color:#e6e9e5;font:inherit;font-size:.85rem;font-weight:700;cursor:pointer;transition:background .2s,border-color .2s}
+.wz-google-button:hover{background:rgba(255,255,255,.07);border-color:rgba(213,189,145,.4)}
+.wz-google-g{font-weight:900;font-family:Arial,sans-serif;font-size:1.25rem;background:conic-gradient(from -45deg,#4285f4 0 25%,#34a853 25% 50%,#fbbc05 50% 75%,#ea4335 75%);background-clip:text;-webkit-background-clip:text;color:transparent}
+.wz-google-arrow{position:absolute;right:17px;color:#879088;font-size:1rem}
+.wz-auth-bottom{display:flex;justify-content:center;align-items:center;gap:6px;flex-wrap:wrap;margin-top:25px;padding-top:20px;border-top:1px solid rgba(255,255,255,.075);color:#909791;font-size:.8rem}
+.wz-auth-checking{display:flex;align-items:center;justify-content:center;gap:12px;min-height:220px;color:#b2bab2;font-size:.9rem}
+.wz-spinner{width:19px;height:19px;border-radius:50%;border:2px solid rgba(255,255,255,.17);border-top-color:#d6bf98;animation:wz-spin .75s linear infinite}
+@keyframes wz-spin{to{transform:rotate(360deg)}}
+.wz-auth-message{font-size:.8rem;line-height:1.5;margin-top:14px;color:#acb7ad;overflow-wrap:anywhere}
+.wz-auth-message.error{color:#ff929b}.wz-auth-message.success{color:#8fe4ab}
+.wz-setup-note{font-size:.76rem;line-height:1.55;margin-top:14px;color:#ead7af;padding:12px 13px;border:1px solid rgba(214,189,145,.22);background:rgba(214,189,145,.06);border-radius:12px;overflow-wrap:anywhere}
+.wz-auth-privacy{display:flex;justify-content:center;align-items:center;gap:7px;margin-top:22px;color:#737d74;font-size:.67rem;letter-spacing:.4px;text-align:center}
+.wz-auth-privacy span{color:#d3bd95;font-size:1rem}
+.wz-auth-footnote{text-align:center;color:#69736b;font-size:.61rem;font-weight:800;letter-spacing:2.8px;padding:0 0 3px}
+.wz-auth-footnote span{color:#c8ae83;padding:0 7px}
+#wzAccountModal .modal{max-width:410px}
+#wzAccountModal .wz-account-email{font-size:.85rem;color:var(--text2);line-height:1.5;overflow-wrap:anywhere}
+#wzAccountModal .wz-account-sync{margin:15px 0;padding:12px;border-radius:12px;background:var(--surface2);color:var(--text2);font-size:.78rem;line-height:1.5}
+@media(min-width:900px){.wz-auth-layout{gap:22px}.wz-auth-card{box-shadow:0 40px 110px rgba(0,0,0,.56),inset 0 1px rgba(255,255,255,.07)}}
+@media(max-width:560px){.wz-auth-screen{padding:calc(14px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom))}.wz-auth-layout{gap:14px}.wz-auth-brand{padding:0 4px}.wz-brand-mark{height:42px;width:42px;border-radius:12px}.wz-brand-name{font-size:1.2rem}.wz-brand-tag{font-size:.52rem;letter-spacing:1.7px}.wz-auth-card{--wz-auth-card-padding:20px;border-radius:22px}.wz-auth-kicker{font-size:.58rem;letter-spacing:1.5px;margin-bottom:22px}.wz-auth-heading h1{font-size:2.05rem}.wz-auth-heading p{font-size:.85rem;margin-bottom:22px}.wz-input-wrap{min-height:54px;margin-bottom:16px}.wz-primary-button{min-height:54px}.wz-auth-divider{margin:20px 0 15px}.wz-auth-bottom{margin-top:20px;padding-top:17px}.wz-auth-privacy{margin-top:17px}}
+@media(max-height:760px){.wz-auth-screen{place-items:start center}.wz-auth-layout{margin:auto;gap:12px}.wz-auth-card{padding:clamp(18px,3vh,30px)}.wz-auth-kicker{margin-bottom:17px}.wz-auth-heading h1{font-size:clamp(1.8rem,4vh,2.4rem)}.wz-auth-heading p{margin-bottom:16px}.wz-input-wrap{min-height:48px;margin-bottom:12px}.wz-input-wrap input{padding:12px 0!important}.wz-primary-button{min-height:50px}.wz-auth-divider{margin:16px 0 12px}.wz-google-button{min-height:48px}.wz-auth-bottom{margin-top:16px;padding-top:14px}.wz-auth-privacy{margin-top:13px}}
+
 </style>
 </head>
 <body data-gradient="aurora">
+
+
+<!-- AUTH GATE: shown until Supabase restores a saved session -->
+<section id="walletzenAuthGate" class="wz-auth-screen" aria-label="WalletZen sign in">
+  <div class="wz-auth-atmosphere" aria-hidden="true"><span class="wz-lightbar wz-lightbar-a"></span><span class="wz-lightbar wz-lightbar-b"></span><span class="wz-auth-grid"></span><span class="wz-orbit wz-orbit-a"></span><span class="wz-orbit wz-orbit-b"></span></div>
+  <div class="wz-auth-layout">
+    <div class="wz-auth-brand"><div class="wz-brand-mark">W<span>Z</span></div><div><div class="wz-brand-name">Wallet<span>Zen</span></div><div class="wz-brand-tag">PERSONAL FINANCE, IN FOCUS</div></div></div>
+    <div class="wz-auth-card">
+      <div class="wz-auth-kicker"><span class="wz-kicker-dot"></span> YOUR PRIVATE FINANCE SPACE</div>
+      <div id="authGateChecking" class="wz-auth-checking"><span class="wz-spinner"></span><span>Restoring your session securely…</span></div>
+      <div id="authGateForm" style="display:none">
+        <div class="wz-auth-heading">
+          <h1 id="authGateTitle">Welcome <span>back.</span></h1>
+          <p id="authGateSubtitle">Sign in to pick up where you left off.</p>
+        </div>
+        <form id="authGateFields" onsubmit="event.preventDefault();walletZenSupabaseSubmit()">
+          <label id="authGateEmailLabel" class="wz-input-label" for="authGateEmail">Email address</label>
+          <div id="authGateEmailWrap" class="wz-input-wrap"><span class="wz-input-icon">✉</span><input id="authGateEmail" type="email" autocomplete="email" placeholder="you@example.com" required></div>
+          <div class="wz-password-label"><label id="authGatePasswordLabel" class="wz-input-label" for="authGatePassword">Password</label><button type="button" id="authGateForgot" class="wz-text-button" onclick="walletZenSupabaseReset()">Forgot password?</button></div>
+          <div class="wz-input-wrap"><span class="wz-input-icon">⌑</span><input id="authGatePassword" type="password" autocomplete="current-password" placeholder="Enter your password" minlength="6" required><button type="button" id="authGatePasswordToggle" class="wz-password-toggle" onclick="walletZenTogglePassword()" aria-label="Show password">◉</button></div>
+          <button type="submit" id="authGateSubmit" class="wz-primary-button"><span id="authGateSubmitText">Sign in</span><span class="wz-button-arrow">↗</span></button>
+        </form>
+        <div class="wz-auth-divider" id="authGateDivider"><span></span><em>or continue with</em><span></span></div>
+        <button type="button" class="wz-google-button" id="authGateGoogle" onclick="walletZenSupabaseGoogle()"><span class="wz-google-g">G</span><span>Continue with Google</span><span class="wz-google-arrow">↗</span></button>
+        <div class="wz-auth-bottom"><span id="authGateToggleText">Don't have an account?</span><button type="button" id="authGateModeToggle" class="wz-text-button" onclick="walletZenToggleMode()">Create account</button></div>
+      </div>
+      <div id="authGateMessage" class="wz-auth-message" role="status" aria-live="polite"></div>
+      <div id="authSetupNote" class="wz-setup-note" style="display:none">Supabase is not connected yet. The sign-in screen is ready, but authentication will work after you add your Supabase Project URL and publishable/anon key in <code>supabase-config.js</code>.</div>
+      <div class="wz-auth-privacy"><span>◈</span> Your account · Your data · Your control</div>
+    </div>
+    <div class="wz-auth-footnote">WALLETZEN <span>•</span> SMARTER MONEY HABITS</div>
+  </div>
+</section>
+
+<div id="walletzenApp" class="walletzen-app-shell" hidden>
 
 <!-- PIN SCREEN -->
 <div id="pinScreen" style="display:none">
@@ -1005,6 +1106,7 @@ body[data-gradient="solid"]::before{display:none}
 </div></div>
 
 <div class="modal-overlay" id="accountModal" style="z-index:1200;align-items:center;justify-content:center;padding:14px"><div class="auth-panel" role="dialog" aria-modal="true" aria-labelledby="authTitle"><button class="auth-close" onclick="closeAccountModal()" aria-label="Close">✕</button><h2 id="authTitle">Your WalletZen account</h2><p class="auth-sub" id="authSubtitle">Sign in to sync your finance data across devices.</p><div id="authSignedOut"><div class="auth-field"><label for="authEmail">Email address</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com"></div><div class="auth-field"><label for="authPassword">Password</label><input id="authPassword" type="password" autocomplete="current-password" placeholder="At least 6 characters"></div><div class="auth-actions"><button class="auth-btn" id="authEmailSubmit" onclick="walletZenEmailAction('login')">Log in</button><button class="auth-btn secondary" onclick="walletZenEmailAction('signup')">Create account</button><div style="text-align:center;color:var(--text3);font-size:.75rem">OR</div><button class="auth-btn secondary" onclick="walletZenGoogleLogin()">Continue with Google</button><button class="auth-btn secondary" onclick="walletZenResetPassword()">Forgot password?</button></div></div><div id="authSignedIn" style="display:none"><p id="authUserSummary" class="auth-sub"></p><div class="auth-actions"><button class="auth-btn" onclick="walletZenSyncNow()">Sync now</button><button class="auth-btn secondary" onclick="walletZenSignOut()">Log out</button></div></div><p class="auth-message" id="authMessage" role="status" aria-live="polite"></p><p class="auth-footer">Local data remains available offline. Configure Firebase and deploy the included security rules before storing real financial data.</p></div></div>
+<div class="modal-overlay" id="wzAccountModal"><div class="modal"><div class="modal-header"><div class="modal-title">WalletZen account</div><button class="modal-close" onclick="closeWalletZenAccount()"><i data-ic="close" data-s="16"></i></button></div><div class="wz-account-email" id="wzAccountEmail">Checking account…</div><div class="wz-account-sync" id="wzAccountSync">Your latest finance data is stored locally and synced when online.</div><div class="modal-footer"><button class="btn btn-secondary" onclick="walletZenSyncNow()">Sync now</button><button class="btn btn-danger" onclick="walletZenSupabaseSignOut()">Sign out</button></div></div></div>
 <div id="toastContainer"></div>
 
 <script>
@@ -2102,6 +2204,7 @@ function init(){
 }
 document.addEventListener('DOMContentLoaded',init);
 </script>
-<script type="module" src="walletzen-cloud.js"></script>
+</div>
+<script type="module" src="walletzen-supabase.js"></script>
 </body>
 </html>
