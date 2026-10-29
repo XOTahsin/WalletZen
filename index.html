@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
 /* ============================================================
    THEMES  (Shark Blue · Lime Noir · Pure White · Violet Night · Sunset · Ocean Teal · Royal Gold)
@@ -599,6 +599,15 @@ body[data-gradient="solid"]::before{display:none}
 @media(max-width:560px){.wz-auth-screen{padding:calc(14px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom))}.wz-auth-layout{gap:14px}.wz-auth-brand{padding:0 4px}.wz-brand-mark{height:42px;width:42px;border-radius:12px}.wz-brand-name{font-size:1.2rem}.wz-brand-tag{font-size:.52rem;letter-spacing:1.7px}.wz-auth-card{--wz-auth-card-padding:20px;border-radius:22px}.wz-auth-kicker{font-size:.58rem;letter-spacing:1.5px;margin-bottom:22px}.wz-auth-heading h1{font-size:2.05rem}.wz-auth-heading p{font-size:.85rem;margin-bottom:22px}.wz-input-wrap{min-height:54px;margin-bottom:16px}.wz-primary-button{min-height:54px}.wz-auth-divider{margin:20px 0 15px}.wz-auth-bottom{margin-top:20px;padding-top:17px}.wz-auth-privacy{margin-top:17px}}
 @media(max-height:760px){.wz-auth-screen{place-items:start center}.wz-auth-layout{margin:auto;gap:12px}.wz-auth-card{padding:clamp(18px,3vh,30px)}.wz-auth-kicker{margin-bottom:17px}.wz-auth-heading h1{font-size:clamp(1.8rem,4vh,2.4rem)}.wz-auth-heading p{margin-bottom:16px}.wz-input-wrap{min-height:48px;margin-bottom:12px}.wz-input-wrap input{padding:12px 0!important}.wz-primary-button{min-height:50px}.wz-auth-divider{margin:16px 0 12px}.wz-google-button{min-height:48px}.wz-auth-bottom{margin-top:16px;padding-top:14px}.wz-auth-privacy{margin-top:13px}}
 
+/* Performance: keep the sign-in view inexpensive to paint on low-power/mobile devices. */
+.wz-auth-card{backdrop-filter:none;-webkit-backdrop-filter:none;background:linear-gradient(145deg,#1c201e,#0e100f 76%);box-shadow:0 18px 48px rgba(0,0,0,.38),inset 0 1px rgba(255,255,255,.05)}
+.wz-auth-atmosphere:before{transform:none;filter:none;inset:0}
+.wz-auth-grid,.wz-orbit{display:none}
+.wz-auth-atmosphere{background:radial-gradient(ellipse at 10% 10%,rgba(87,117,91,.14),transparent 32%),radial-gradient(ellipse at 90% 15%,rgba(188,159,115,.08),transparent 28%),linear-gradient(115deg,#080b09 0%,#121613 44%,#080a09 76%,#030504 100%)}
+.wz-auth-atmosphere:after{background:linear-gradient(90deg,rgba(0,0,0,.28),transparent 25%,transparent 75%,rgba(0,0,0,.24)),linear-gradient(0deg,rgba(0,0,0,.38),transparent 28%,transparent 78%,rgba(0,0,0,.12))}
+.wz-auth-layout{gap:16px}
+.wz-auth-screen{overscroll-behavior:contain}
+@media(prefers-reduced-motion:reduce){.wz-auth-screen *, .wz-auth-screen *::before,.wz-auth-screen *::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}}
 </style>
 </head>
 <body data-gradient="aurora">
@@ -611,8 +620,8 @@ body[data-gradient="solid"]::before{display:none}
     <div class="wz-auth-brand"><div class="wz-brand-mark">W<span>Z</span></div><div><div class="wz-brand-name">Wallet<span>Zen</span></div><div class="wz-brand-tag">PERSONAL FINANCE, IN FOCUS</div></div></div>
     <div class="wz-auth-card">
       <div class="wz-auth-kicker"><span class="wz-kicker-dot"></span> YOUR PRIVATE FINANCE SPACE</div>
-      <div id="authGateChecking" class="wz-auth-checking"><span class="wz-spinner"></span><span>Restoring your session securely…</span></div>
-      <div id="authGateForm" style="display:none">
+      <div id="authGateChecking" class="wz-auth-checking" style="display:none"><span class="wz-spinner"></span><span>Restoring your session…</span></div>
+      <div id="authGateForm">
         <div class="wz-auth-heading">
           <h1 id="authGateTitle">Welcome <span>back.</span></h1>
           <p id="authGateSubtitle">Sign in to pick up where you left off.</p>
@@ -629,7 +638,6 @@ body[data-gradient="solid"]::before{display:none}
         <div class="wz-auth-bottom"><span id="authGateToggleText">Don't have an account?</span><button type="button" id="authGateModeToggle" class="wz-text-button" onclick="walletZenToggleMode()">Create account</button></div>
       </div>
       <div id="authGateMessage" class="wz-auth-message" role="status" aria-live="polite"></div>
-      <div id="authSetupNote" class="wz-setup-note" style="display:none">Supabase is not connected yet. The sign-in screen is ready, but authentication will work after you add your Supabase Project URL and publishable/anon key in <code>supabase-config.js</code>.</div>
       <div class="wz-auth-privacy"><span>◈</span> Your account · Your data · Your control</div>
     </div>
     <div class="wz-auth-footnote">WALLETZEN <span>•</span> SMARTER MONEY HABITS</div>
@@ -2195,12 +2203,24 @@ document.addEventListener('click',e=>{if(!e.target.closest('.dropdown'))document
 
 window.WalletZenGetData=()=>DB;window.WalletZenSetCloudData=data=>{if(data&&typeof data==="object"){DB=Object.assign(DB,data);save();refresh()}};
 // ===================== INIT =====================
-function init(){
+let walletZenAppInitialized=false;
+function initializeWalletZenApp(){
+  if(walletZenAppInitialized)return;
+  walletZenAppInitialized=true;
   load();hydrateIcons();applyTheme();checkPin();
   document.getElementById('sidebarName').textContent=DB.settings.name;
   document.getElementById('sidebarAvatar').textContent=DB.settings.name[0].toUpperCase();
   initCardScroll();updateInstallUI();renderDashboard();
-  window.addEventListener('resize',()=>{clearTimeout(window.__rz);window.__rz=setTimeout(()=>{const s=document.querySelector('.section.active');if(s&&/dashboard|analytics/.test(s.id))refresh()},250)});
+  window.addEventListener('resize',()=>{
+    if(window.__rz)cancelAnimationFrame(window.__rz);
+    window.__rz=requestAnimationFrame(()=>{const s=document.querySelector('.section.active');if(s&&/dashboard|analytics/.test(s.id))refresh()});
+  });
+}
+window.WalletZenStartApp=initializeWalletZenApp;
+function init(){
+  // In auth-gated builds, the dashboard initializes only after a valid session is restored.
+  if(document.getElementById('walletzenAuthGate'))return;
+  initializeWalletZenApp();
 }
 document.addEventListener('DOMContentLoaded',init);
 </script>
