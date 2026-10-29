@@ -27,13 +27,23 @@ function setFormBusy(busy) {
 function configureGateMode(mode) {
   authMode = mode;
   const signup = mode === "signup";
-  if ($("authGateTitle")) $("authGateTitle").innerHTML = signup ? 'Create your <span>account.</span>' : 'Welcome <span>back.</span>';
-  if ($("authGateSubtitle")) $("authGateSubtitle").textContent = signup ? "Start organizing your money in one private space." : "Sign in to pick up where you left off.";
-  if ($("authGateSubmitText")) $("authGateSubmitText").textContent = signup ? "Create account" : "Sign in";
-  if ($("authGateModeToggle")) $("authGateModeToggle").textContent = signup ? "Sign in" : "Create account";
-  if ($("authGateToggleText")) $("authGateToggleText").textContent = signup ? "Already have an account?" : "Don't have an account?";
-  if ($("authGatePassword")) $("authGatePassword").autocomplete = signup ? "new-password" : "current-password";
-  if ($("authGateForgot")) $("authGateForgot").style.visibility = signup ? "hidden" : "visible";
+  const recovery = mode === "recovery";
+  if ($("authGateTitle")) $("authGateTitle").innerHTML = recovery ? 'Set a new <span>password.</span>' : signup ? 'Create your <span>account.</span>' : 'Welcome <span>back.</span>';
+  if ($("authGateSubtitle")) $("authGateSubtitle").textContent = recovery ? "Choose a new password for your WalletZen account." : signup ? "Start organizing your money in one private space." : "Sign in to pick up where you left off.";
+  if ($("authGateSubmitText")) $("authGateSubmitText").textContent = recovery ? "Update password" : signup ? "Create account" : "Sign in";
+  if ($("authGateModeToggle")) $("authGateModeToggle").textContent = recovery ? "Back to sign in" : signup ? "Sign in" : "Create account";
+  if ($("authGateToggleText")) $("authGateToggleText").textContent = recovery ? "Remembered your password?" : signup ? "Already have an account?" : "Don't have an account?";
+  if ($("authGatePassword")) {
+    $("authGatePassword").autocomplete = signup || recovery ? "new-password" : "current-password";
+    $("authGatePassword").placeholder = recovery ? "Enter your new password" : signup ? "Create a password" : "Enter your password";
+  }
+  if ($("authGatePasswordLabel")) $("authGatePasswordLabel").textContent = recovery ? "New password" : "Password";
+  if ($("authGateEmailLabel")) $("authGateEmailLabel").style.display = recovery ? "none" : "";
+  if ($("authGateEmailWrap")) $("authGateEmailWrap").style.display = recovery ? "none" : "";
+  if ($("authGateEmail")) $("authGateEmail").required = !recovery;
+  if ($("authGateForgot")) $("authGateForgot").style.visibility = signup || recovery ? "hidden" : "visible";
+  if ($("authGateGoogle")) $("authGateGoogle").style.display = recovery ? "none" : "";
+  if ($("authGateDivider")) $("authGateDivider").style.display = recovery ? "none" : "";
   gateMessage("");
 }
 function showSignIn(setupMessage = false) {
@@ -148,7 +158,7 @@ window.openWalletZenAccount = () => {
   syncMessage("WalletZen is signed in with " + (activeUser?.email || "your Supabase account") + ".");
 };
 window.closeWalletZenAccount = () => $("wzAccountModal")?.classList.remove("open");
-window.walletZenToggleMode = () => configureGateMode(authMode === "login" ? "signup" : "login");
+window.walletZenToggleMode = () => configureGateMode(authMode === "signup" ? "login" : authMode === "recovery" ? "login" : "signup");
 window.walletZenTogglePassword = () => {
   const field = $("authGatePassword");
   if (!field) return;
@@ -163,14 +173,30 @@ window.walletZenSupabaseSubmit = async () => {
   }
   const email = ($("authGateEmail")?.value || "").trim();
   const password = $("authGatePassword")?.value || "";
-  if (!email || !password) {
-    gateMessage("Enter your email address and password.", "error");
+  if (!password || (authMode !== "recovery" && !email)) {
+    gateMessage(authMode === "recovery" ? "Enter your new password." : "Enter your email address and password.", "error");
+    return;
+  }
+  if (password.length < 6) {
+    gateMessage("Choose a password with at least 6 characters.", "error");
     return;
   }
   setFormBusy(true);
-  gateMessage(authMode === "signup" ? "Creating your account…" : "Signing in securely…");
+  gateMessage(authMode === "signup" ? "Creating your account…" : authMode === "recovery" ? "Updating your password…" : "Signing in securely…");
   try {
-    if (authMode === "signup") {
+    if (authMode === "recovery") {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      gateMessage("Password updated. Opening WalletZen…", "success");
+      configureGateMode("login");
+      if (activeUser) {
+        showApp(activeUser);
+        if (lastLoadedUserId !== activeUser.id) {
+          lastLoadedUserId = activeUser.id;
+          await syncWalletData();
+        }
+      }
+    } else if (authMode === "signup") {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -242,10 +268,19 @@ window.walletZenSupabaseSignOut = async () => {
   $("wzAccountModal")?.classList.remove("open");
   gateMessage("You have signed out. Sign in again to open your finance dashboard.", "success");
 };
-async function handleAuthSession(session) {
+async function handleAuthSession(session, event) {
   const nextUser = session?.user || null;
+  if (event === "PASSWORD_RECOVERY" && nextUser) {
+    activeUser = nextUser;
+    showSignIn(false);
+    configureGateMode("recovery");
+    gateMessage("Set a new password to finish recovering your account.", "success");
+    if ($("authGatePassword")) $("authGatePassword").focus();
+    return;
+  }
   if (!nextUser) {
     activeUser = null;
+    lastLoadedUserId = null;
     showSignIn(!isSupabaseConfigured());
     configureGateMode("login");
     return;
@@ -271,7 +306,7 @@ function initializeSupabase() {
     });
     // Do not reveal the app until the persisted session has been restored.
     supabase.auth.onAuthStateChange((event, session) => {
-      authEventQueue = authEventQueue.then(() => handleAuthSession(session)).catch(error => {
+      authEventQueue = authEventQueue.then(() => handleAuthSession(session, event)).catch(error => {
         console.error("WalletZen auth-state error:", error);
         showSignIn(false);
       });
