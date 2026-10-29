@@ -1,8 +1,8 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { supabaseUrl, supabaseAnonKey, isSupabaseConfigured } from "./supabase-config.js";
 
 const $ = id => document.getElementById(id);
 let supabase = null;
+let supabaseSdkLoadFailed = false;
 let activeUser = null;
 let authMode = "login";
 let syncBusy = false;
@@ -46,14 +46,13 @@ function configureGateMode(mode) {
   if ($("authGateDivider")) $("authGateDivider").style.display = recovery ? "none" : "";
   gateMessage("");
 }
-function showSignIn(setupMessage = false) {
+function showSignIn() {
   const gate = $("walletzenAuthGate");
   const app = $("walletzenApp");
   if (app) app.hidden = true;
   if (gate) gate.hidden = false;
   if ($("authGateChecking")) $("authGateChecking").style.display = "none";
   if ($("authGateForm")) $("authGateForm").style.display = "";
-  if ($("authSetupNote")) $("authSetupNote").style.display = setupMessage ? "" : "none";
 }
 function showApp(user) {
   activeUser = user;
@@ -168,7 +167,7 @@ window.walletZenTogglePassword = () => {
 };
 window.walletZenSupabaseSubmit = async () => {
   if (!supabase) {
-    gateMessage("Supabase is not configured yet. Follow SUPABASE_SETUP.md and add your project URL and public key.", "error");
+    gateMessage("Sign-in is temporarily unavailable. Please try again later.", "error");
     return;
   }
   const email = ($("authGateEmail")?.value || "").trim();
@@ -220,7 +219,7 @@ window.walletZenSupabaseSubmit = async () => {
 };
 window.walletZenSupabaseGoogle = async () => {
   if (!supabase) {
-    gateMessage("Supabase is not configured yet. Follow SUPABASE_SETUP.md first.", "error");
+    gateMessage("Sign-in is temporarily unavailable. Please try again later.", "error");
     return;
   }
   setFormBusy(true);
@@ -281,7 +280,7 @@ async function handleAuthSession(session, event) {
   if (!nextUser) {
     activeUser = null;
     lastLoadedUserId = null;
-    showSignIn(!isSupabaseConfigured());
+    showSignIn();
     configureGateMode("login");
     return;
   }
@@ -292,34 +291,34 @@ async function handleAuthSession(session, event) {
     await syncWalletData();
   }
 }
-function initializeSupabase() {
+async function initializeSupabase() {
   if (!isSupabaseConfigured()) {
-    showSignIn(true);
+    // Keep the public-facing screen clean; configuration details belong in developer setup docs.
+    showSignIn();
     configureGateMode("login");
-    if ($("authGateChecking")) $("authGateChecking").style.display = "none";
-    if ($("authSetupNote")) $("authSetupNote").style.display = "";
     return;
   }
   try {
-    supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    // Load the pinned SDK on demand so its download does not block first paint of the login UI.
+    const sdkModule = await import("https://esm.sh/@supabase/supabase-js@2.118.0?bundle");
+    supabase = sdkModule.createClient(supabaseUrl, supabaseAnonKey, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
     });
-    // Do not reveal the app until the persisted session has been restored.
     supabase.auth.onAuthStateChange((event, session) => {
       authEventQueue = authEventQueue.then(() => handleAuthSession(session, event)).catch(error => {
         console.error("WalletZen auth-state error:", error);
-        showSignIn(false);
+        showSignIn();
       });
     });
   } catch (error) {
+    supabaseSdkLoadFailed = true;
     console.error("Could not initialize Supabase:", error);
-    showSignIn(true);
-    gateMessage("Could not start Supabase. Check supabase-config.js. " + friendlyError(error), "error");
+    showSignIn();
   }
 }
 function start() {
-  if ($("authGateChecking")) $("authGateChecking").style.display = "";
-  if ($("authGateForm")) $("authGateForm").style.display = "none";
+  // The form is rendered in the HTML immediately. Session restoration replaces it with
+  // the dashboard when valid, while the user can see the screen without waiting for the SDK.
   initializeSupabase();
 }
 document.addEventListener("DOMContentLoaded", start);
