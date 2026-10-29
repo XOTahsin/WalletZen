@@ -532,6 +532,7 @@ body[data-gradient="solid"]::before{display:none}
 .detail-grid b{font-family:var(--font-display);font-size:.84rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 .sector-row{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius2);margin-bottom:8px}
 @media (max-width:640px){.biz-grid{grid-template-columns:1fr}.biz-hero{padding:18px 16px;border-radius:22px}.biz-hero-grid{gap:8px}.detail-grid{grid-template-columns:repeat(2,1fr)}.biz-hero-grid>div{padding:10px}.biz-hero-grid b{font-size:.82rem}.detail-grid b{font-size:.78rem}}
+.account-action{padding:9px 12px;border-radius:12px;background:rgba(var(--accent-rgb),.12);border:1px solid var(--border);color:var(--accent);font-size:.8rem;font-weight:700;white-space:nowrap}.cloud-status{font-size:.72rem;color:var(--text3);padding:0 12px 8px}.auth-panel{width:min(440px,calc(100vw - 28px));max-height:90dvh;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:24px;box-shadow:var(--shadow3)}.auth-panel h2{font-family:var(--font-display);font-size:1.35rem;margin-bottom:6px}.auth-sub{font-size:.84rem;color:var(--text2);margin-bottom:20px;line-height:1.5}.auth-field{display:flex;flex-direction:column;gap:7px;margin-bottom:13px}.auth-field label{font-size:.78rem;color:var(--text2);font-weight:700}.auth-field input{width:100%;padding:12px 13px;border-radius:11px;border:1px solid var(--border);background:var(--surface2);color:var(--text)}.auth-actions{display:flex;flex-direction:column;gap:10px;margin-top:16px}.auth-btn{width:100%;padding:12px 14px;border-radius:12px;background:var(--accent);color:var(--on-accent);font-weight:800}.auth-btn.secondary{background:var(--surface2);border:1px solid var(--border);color:var(--text)}.auth-message{font-size:.8rem;line-height:1.45;margin-top:12px;color:var(--text2);overflow-wrap:anywhere}.auth-message.error{color:var(--red)}.auth-message.success{color:var(--green)}.auth-close{float:right;width:32px;height:32px;border-radius:9px;background:var(--surface2);color:var(--text2)}.auth-footer{font-size:.72rem;color:var(--text3);line-height:1.5;margin-top:16px}@media(max-width:600px){.account-action{padding:8px;font-size:.74rem}.auth-panel{padding:20px}}
 </style>
 </head>
 <body data-gradient="aurora">
@@ -578,7 +579,7 @@ body[data-gradient="solid"]::before{display:none}
   </nav>
   <div class="sidebar-footer">
     <button class="sidebar-footer-btn install installBtn" onclick="installApp()" style="display:none"><i data-ic="phone"></i> Install App</button>
-    <button class="sidebar-footer-btn" onclick="openThemes()"><i data-ic="palette"></i> Change Theme</button>
+    <button class="sidebar-footer-btn" onclick="openWalletZenAccount()">Account &amp; Cloud Sync</button><div class="cloud-status" id="cloudStatus">Local data · not signed in</div><button class="sidebar-footer-btn" onclick="openThemes()"><i data-ic="palette"></i> Change Theme</button>
   </div>
 </aside>
 
@@ -586,7 +587,7 @@ body[data-gradient="solid"]::before{display:none}
 <nav class="topnav">
   <button class="icon-btn hamburger" onclick="toggleSidebar()" aria-label="Menu"><i data-ic="menu"></i></button>
   <div class="topnav-title" id="topnavTitle">Dashboard</div>
-  <div class="topnav-actions">
+  <div class="topnav-actions"><button class="account-action" id="accountButton" onclick="openWalletZenAccount()">Log in</button>
     <button class="icon-btn install-top installBtn" onclick="installApp()" title="Install app" style="display:none"><i data-ic="download"></i></button>
     <button class="icon-btn" onclick="openThemes()" title="Themes" aria-label="Themes"><i data-ic="palette"></i></button>
     <button class="icon-btn" onclick="openSearch()" title="Search" aria-label="Search"><i data-ic="search"></i></button>
@@ -1003,6 +1004,7 @@ body[data-gradient="solid"]::before{display:none}
   <div class="modal-footer"><button class="btn btn-primary" onclick="closeModal('installModal')">Got it</button></div>
 </div></div>
 
+<div class="modal-overlay" id="accountModal" style="z-index:1200;align-items:center;justify-content:center;padding:14px"><div class="auth-panel" role="dialog" aria-modal="true" aria-labelledby="authTitle"><button class="auth-close" onclick="closeAccountModal()" aria-label="Close">✕</button><h2 id="authTitle">Your WalletZen account</h2><p class="auth-sub" id="authSubtitle">Sign in to sync your finance data across devices.</p><div id="authSignedOut"><div class="auth-field"><label for="authEmail">Email address</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com"></div><div class="auth-field"><label for="authPassword">Password</label><input id="authPassword" type="password" autocomplete="current-password" placeholder="At least 6 characters"></div><div class="auth-actions"><button class="auth-btn" id="authEmailSubmit" onclick="walletZenEmailAction('login')">Log in</button><button class="auth-btn secondary" onclick="walletZenEmailAction('signup')">Create account</button><div style="text-align:center;color:var(--text3);font-size:.75rem">OR</div><button class="auth-btn secondary" onclick="walletZenGoogleLogin()">Continue with Google</button><button class="auth-btn secondary" onclick="walletZenResetPassword()">Forgot password?</button></div></div><div id="authSignedIn" style="display:none"><p id="authUserSummary" class="auth-sub"></p><div class="auth-actions"><button class="auth-btn" onclick="walletZenSyncNow()">Sync now</button><button class="auth-btn secondary" onclick="walletZenSignOut()">Log out</button></div></div><p class="auth-message" id="authMessage" role="status" aria-live="polite"></p><p class="auth-footer">Local data remains available offline. Configure Firebase and deploy the included security rules before storing real financial data.</p></div></div>
 <div id="toastContainer"></div>
 
 <script>
@@ -1095,7 +1097,7 @@ function hashNum(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>
 function refresh(){const sec=document.querySelector('.section.active');if(sec)renderPage(sec.id.replace('sec-',''))}
 
 // ===================== STORAGE =====================
-function save(){try{localStorage.setItem('walletzen_v2',JSON.stringify(DB))}catch(e){toast('Storage full — export a backup','error')}}
+function save(){try{localStorage.setItem('walletzen_v2',JSON.stringify(DB));if(window.WalletZenCloud)window.WalletZenCloud.queueSync(DB)}catch(e){toast('Storage full — export a backup','error')}}
 function load(){
   const raw=localStorage.getItem('walletzen_v2');
   if(raw){try{const p=JSON.parse(raw);DB=Object.assign(DB,p)}catch(e){}}
@@ -2089,6 +2091,7 @@ document.addEventListener('keydown',e=>{
 });
 document.addEventListener('click',e=>{if(!e.target.closest('.dropdown'))document.querySelectorAll('.dropdown-menu.open').forEach(d=>d.classList.remove('open'))});
 
+window.WalletZenGetData=()=>DB;window.WalletZenSetCloudData=data=>{if(data&&typeof data==="object"){DB=Object.assign(DB,data);save();refresh()}};
 // ===================== INIT =====================
 function init(){
   load();hydrateIcons();applyTheme();checkPin();
@@ -2099,5 +2102,6 @@ function init(){
 }
 document.addEventListener('DOMContentLoaded',init);
 </script>
+<script type="module" src="walletzen-cloud.js"></script>
 </body>
 </html>
