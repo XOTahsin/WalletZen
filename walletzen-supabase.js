@@ -285,11 +285,15 @@ async function handleAuthSession(session, event) {
     return;
   }
   const needsInitialSync = lastLoadedUserId !== nextUser.id;
-  showApp(nextUser);
   if (needsInitialSync) {
-    lastLoadedUserId = nextUser.id;
+    // Initialize the existing local store while the app wrapper is still hidden,
+    // then let cloud state replace local state before showing the dashboard.
+    activeUser = nextUser;
+    if (typeof window.WalletZenStartApp === "function") window.WalletZenStartApp();
     await syncWalletData();
+    lastLoadedUserId = nextUser.id;
   }
+  showApp(nextUser);
 }
 async function initializeSupabase() {
   if (!isSupabaseConfigured()) {
