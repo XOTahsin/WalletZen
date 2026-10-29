@@ -2,19 +2,19 @@
 
 The app uses Supabase Auth for email/password and Google OAuth, with a persistent browser session. The dashboard is hidden behind the sign-in screen until a saved Supabase session is restored. Existing local WalletZen data remains in the browser; first sign-in uploads it if that user has no cloud row. If a cloud row already exists, it is loaded onto this device.
 
-## 1. Create a Supabase project
-1. Open https://supabase.com/dashboard and create a project.
-2. Open Project Settings > API (or API Keys).
-3. Copy the Project URL and the **publishable key** (or legacy anon/public key).
-4. Put those values in `supabase-config.js`. Never use a service_role/secret key in browser code.
+## 1. Project and client connection
+The WalletZen Supabase project has been created and the public project URL/publishable key are already configured in `supabase-config.js`.
+- Project dashboard: https://supabase.com/dashboard/project/djytqqgaydbpfyhchfkh
+- Project URL: `https://djytqqgaydbpfyhchfkh.supabase.co`
+- The frontend uses the publishable key, which is designed for browser clients. Never put a `service_role` or secret key in browser code.
+- The project URL and public key are not authentication provider credentials; Google OAuth still needs a Google OAuth Client ID and Client Secret configured in Supabase.
 
-## 2. Create the private data table
-1. In Supabase, open SQL Editor > New query.
-2. Open this repository's `supabase/schema.sql`, copy the entire file into the SQL editor and Run it.
-3. Confirm the `walletzen_data` table exists and RLS is enabled. The policies limit all row operations to the authenticated user's own `user_id`.
+## 2. Database and row-level security
+The `public.walletzen_data` table is already created in the connected project and Row Level Security is enabled. Four policies restrict SELECT, INSERT, UPDATE, and DELETE to rows where `user_id = auth.uid()`. The connected database was checked for the expected schema and policies, and current Supabase security/performance advisor checks returned no notices.
+The reproducible schema is kept in `supabase/schema.sql`.
 
 ## 3. Configure email authentication
-In Authentication > URL Configuration, set Site URL to your deployed WalletZen URL. Add the exact production URL and local development URL, if used, to Redirect URLs. In Authentication > Sign In / Providers, enable Email. Depending on your confirmation settings, new users may need to confirm their email before they can sign in.
+In Authentication > URL Configuration, set Site URL to `https://walletzen.vercel.app` (or your actual active deployment URL if different). Add `https://walletzen.vercel.app/**` and any local development URL you use to Redirect URLs. In Authentication > Sign In / Providers, confirm Email is enabled. Depending on your confirmation settings, new users may need to confirm their email before they can sign in.
 
 ## 4. Enable Google login
 1. In Supabase Authentication > Sign In / Providers > Google, enable the provider.
