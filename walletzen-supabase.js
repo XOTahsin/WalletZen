@@ -273,7 +273,7 @@ async function insertCloudSnapshot(snapshot) {
 }
 async function compareAndSwapCloudSnapshot(row, snapshot) {
   const previousMs = Date.parse(row.updated_at);
-  const nextTimestamp = new Date((Number.isFinite(previousMs) ? previousMs : Date.now()) + 1).toISOString();
+  const nextTimestamp = new Date(Math.max(Date.now(), Number.isFinite(previousMs) ? previousMs + 1 : 0)).toISOString();
   const { data, error } = await supabase
     .from("walletzen_data")
     .update({ data: snapshot, updated_at: nextTimestamp })
@@ -436,7 +436,11 @@ function queueSync(snapshot) {
   meta.pending = true;
   meta.pendingUserId = activeUser?.id || meta.pendingUserId || meta.ownerUserId || null;
   meta.localModifiedAt = new Date().toISOString();
-  writeSyncMeta(meta);
+  const persisted = writeSyncMeta(meta);
+  if (!persisted) {
+    syncMessage("Saved to this device, but the sync marker could not be stored. Keep the app open and use Sync now after reconnecting.");
+    return;
+  }
   if (conflictContext) {
     syncMessage("Saved on this device. Resolve the two-copy sync notice before syncing.");
     return;
@@ -474,10 +478,17 @@ window.walletZenResolveSyncConflict = async choice => {
   const revision = Number(meta.localRevision || 0);
   try {
     if (choice === "cloud") {
+      // Re-check the selected cloud version immediately before applying it.
+      const latest = await fetchCloudRow();
+      if (!latest) throw new Error("The cloud row is no longer available. No local data was changed.");
+      if (latest.updated_at !== context.row?.updated_at) {
+        refreshConflictRow(latest);
+        return;
+      }
       if (!downloadBackup(current, "walletzen_device_backup_" + new Date().toISOString().slice(0, 10) + ".json")) return;
-      applyWalletData(context.cloud);
+      applyWalletData(latest.data);
       conflictContext = null;
-      markSynced(context.row?.updated_at, revision);
+      markSynced(latest.updated_at, revision);
       syncMessage("Cloud copy selected. A backup of the previous device copy was downloaded.");
       if ($("cloudStatus")) $("cloudStatus").textContent = "Cloud synced · " + new Date().toLocaleTimeString();
       $("wzAccountModal")?.classList.remove("open");
@@ -627,7 +638,13 @@ function isolateUserStorage(userId) {
   const meta = readSyncMeta();
   if (!meta.ownerUserId || meta.ownerUserId === userId) return false;
   const raw = localStorage.getItem(APP_DATA_KEY);
-  if (raw) localStorage.setItem("walletzen_local_backup_" + meta.ownerUserId, raw);
+  if (raw) {
+    const backupBase = "walletzen_local_backup_" + meta.ownerUserId;
+    const backupKey = localStorage.getItem(backupBase) === null
+      ? backupBase
+      : backupBase + "_" + new Date().toISOString().replace(/[:.]/g, "-");
+    localStorage.setItem(backupKey, raw);
+  }
   if (syncTimer) clearTimeout(syncTimer);
   if (retryTimer) clearTimeout(retryTimer);
   localStorage.removeItem(APP_DATA_KEY);
