@@ -1,15 +1,30 @@
 import { supabaseUrl, supabaseAnonKey, isSupabaseConfigured } from "./supabase-config.js";
 
 const $ = id => document.getElementById(id);
+const APP_DATA_KEY = "walletzen_v2";
+const SYNC_META_KEY = "walletzen_sync_meta_v1";
+const DEFAULT_META = {
+  version: 1,
+  ownerUserId: null,
+  localRevision: 0,
+  lastSyncedLocalRevision: 0,
+  lastSyncedCloudUpdatedAt: null,
+  pending: false,
+  pendingUserId: null
+};
+
 let supabase = null;
-let supabaseSdkLoadFailed = false;
 let activeUser = null;
 let authMode = "login";
 let syncBusy = false;
-let pendingSnapshot = null;
 let syncTimer = null;
+let retryTimer = null;
+let retryCount = 0;
+let syncRequested = false;
 let lastLoadedUserId = null;
 let authEventQueue = Promise.resolve();
+let applyingRemoteData = false;
+let conflictContext = null;
 
 function gateMessage(text, type = "") {
   const element = $("authGateMessage");
@@ -67,15 +82,113 @@ function showApp(user) {
 }
 function syncMessage(text) {
   const element = $("wzAccountSync");
-  if (element) element.textContent = text;
+  if (element) {
+    element.textContent = text;
+    element.setAttribute("role", "status");
+    element.setAttribute("aria-live", "polite");
+  }
 }
 function localWalletData() {
   return typeof window.WalletZenGetData === "function" ? window.WalletZenGetData() : null;
 }
+function cloneData(data) {
+  return data && typeof data === "object" ? JSON.parse(JSON.stringify(data)) : {};
+}
 function applyWalletData(data) {
-  if (data && typeof data === "object" && typeof window.WalletZenSetCloudData === "function") {
-    window.WalletZenSetCloudData(data);
+  if (!data || typeof data !== "object" || typeof window.WalletZenSetCloudData !== "function") return;
+  applyingRemoteData = true;
+  try {
+    window.WalletZenSetCloudData(data, true);
+  } finally {
+    applyingRemoteData = false;
   }
+}
+function readSyncMeta() {
+  try {
+    const raw = localStorage.getItem(SYNC_META_KEY);
+    const saved = raw ? JSON.parse(raw) : {};
+    return Object.assign({}, DEFAULT_META, saved && typeof saved === "object" ? saved : {});
+  } catch (_) {
+    return Object.assign({}, DEFAULT_META);
+  }
+}
+function writeSyncMeta(meta) {
+  try {
+    localStorage.setItem(SYNC_META_KEY, JSON.stringify(Object.assign({}, DEFAULT_META, meta)));
+    return true;
+  } catch (error) {
+    console.error("WalletZen could not persist sync metadata:", error);
+    return false;
+  }
+}
+function stableStringify(value) {
+  if (Array.isArray(value)) return "[" + value.map(stableStringify).join(",") + "]";
+  if (value && typeof value === "object") {
+    return "{" + Object.keys(value).sort().map(key => JSON.stringify(key) + ":" + stableStringify(value[key])).join(",") + "}";
+  }
+  return JSON.stringify(value);
+}
+function sameData(a, b) {
+  try { return stableStringify(a || {}) === stableStringify(b || {}); }
+  catch (_) { return false; }
+}
+function hasMeaningfulData(data) {
+  if (!data || typeof data !== "object") return false;
+  const nonEmpty = (value) => Array.isArray(value) && value.length > 0;
+  const simpleCollections = ["transactions", "budgets", "goals", "subscriptions", "loans"];
+  if (simpleCollections.some(key => nonEmpty(data[key]))) return true;
+  if (data.biz && (nonEmpty(data.biz.items) || nonEmpty(data.biz.entries))) return true;
+
+  const defaultAccounts = [
+    { name: "cash wallet", type: "cash", balance: 5000, initialBalance: 5000 },
+    { name: "bank account", type: "bank", balance: 25000, initialBalance: 25000 },
+    { name: "bkash", type: "mobile", balance: 3500, initialBalance: 3500 }
+  ];
+  const accounts = Array.isArray(data.accounts) ? data.accounts : [];
+  if (accounts.length !== defaultAccounts.length) return true;
+  for (const expected of defaultAccounts) {
+    const found = accounts.find(account => String(account?.name || "").trim().toLowerCase() === expected.name);
+    if (!found || found.type !== expected.type ||
+      Number(found.initialBalance) !== expected.initialBalance ||
+      Number(found.balance) !== expected.balance) return true;
+  }
+
+  const defaultExpense = ["food", "transport", "shopping", "bills", "health", "entertainment", "education", "rent", "clothing", "personal", "gifts", "travel", "other"];
+  const defaultIncome = ["salary", "freelance", "business", "investment", "gift", "rental", "other"];
+  const categoryIds = list => (Array.isArray(list) ? list.map(item => item?.id).filter(Boolean).sort() : []);
+  if (stableStringify(categoryIds(data.categories?.expense)) !== stableStringify(defaultExpense.slice().sort())) return true;
+  if (stableStringify(categoryIds(data.categories?.income)) !== stableStringify(defaultIncome.slice().sort())) return true;
+
+  const settings = data.settings || {};
+  if ((settings.name && settings.name !== "My Finance") ||
+      (settings.currency && settings.currency !== "৳") ||
+      (settings.palette && settings.palette !== "green") ||
+      (settings.gradient && settings.gradient !== "aurora") ||
+      settings.pinEnabled === true || !!settings.pin ||
+      settings.hideBalance === true) return true;
+  return false;
+}
+function countRecords(data) {
+  const count = key => Array.isArray(data?.[key]) ? data[key].length : 0;
+  return count("transactions") + count("budgets") + count("goals") +
+    count("subscriptions") + count("loans") +
+    (Array.isArray(data?.biz?.items) ? data.biz.items.length : 0) +
+    (Array.isArray(data?.biz?.entries) ? data.biz.entries.length : 0);
+}
+function localHasPendingChanges(meta, userId) {
+  return !!meta.pending && meta.pendingUserId === userId &&
+    Number(meta.localRevision || 0) > Number(meta.lastSyncedLocalRevision || 0);
+}
+function markSynced(updatedAt, snapshotRevision) {
+  const meta = readSyncMeta();
+  const revision = Number(snapshotRevision ?? meta.localRevision ?? 0);
+  meta.ownerUserId = activeUser?.id || meta.ownerUserId;
+  meta.lastSyncedCloudUpdatedAt = updatedAt || meta.lastSyncedCloudUpdatedAt;
+  meta.lastSyncedLocalRevision = Math.max(Number(meta.lastSyncedLocalRevision || 0), revision);
+  meta.pending = Number(meta.localRevision || 0) > meta.lastSyncedLocalRevision;
+  meta.pendingUserId = meta.pending ? activeUser?.id || meta.pendingUserId : null;
+  writeSyncMeta(meta);
+  if (meta.pending) scheduleSync(500);
 }
 function friendlyError(error) {
   const message = error?.message || String(error || "Unknown error");
@@ -84,77 +197,265 @@ function friendlyError(error) {
   if (/Password should be at least/i.test(message)) return "Choose a password with at least 6 characters.";
   if (/Email not confirmed/i.test(message)) return "Check your email and confirm your account before signing in.";
   if (/redirect/i.test(message)) return message + " Check the Supabase Auth URL configuration.";
-  if (/row-level security|permission denied/i.test(message)) return "Supabase denied the database request. Run the SQL setup in SUPABASE_SETUP.md.";
+  if (/row-level security|permission denied/i.test(message)) return "Supabase denied the database request. Check the table's RLS policies.";
+  if (/Failed to fetch|NetworkError|fetch failed|Load failed/i.test(message)) return "Network unavailable. Your changes remain saved on this device.";
   return message;
 }
-async function syncWalletData() {
-  if (!activeUser || !supabase || syncBusy) return;
-  syncBusy = true;
-  syncMessage("Checking your cloud data…");
-  if ($("cloudStatus")) $("cloudStatus").textContent = "Syncing cloud data…";
+function downloadBackup(data, filename) {
   try {
-    const { data: row, error } = await supabase
-      .from("walletzen_data")
-      .select("data, updated_at")
-      .eq("user_id", activeUser.id)
-      .maybeSingle();
-    if (error) throw error;
-    if (row && row.data && typeof row.data === "object") {
-      // Existing cloud state wins on this device. Export a local JSON backup first
-      // if local and cloud data may differ.
-      applyWalletData(row.data);
-      syncMessage("Cloud data loaded · " + (row.updated_at ? new Date(row.updated_at).toLocaleString() : "latest copy"));
-    } else {
-      // First login for this account: upload this browser's existing local data.
-      const local = localWalletData();
-      if (local) {
-        const { error: writeError } = await supabase.from("walletzen_data").upsert({
-          user_id: activeUser.id,
-          data: local,
-          updated_at: new Date().toISOString()
-        }, { onConflict: "user_id" });
-        if (writeError) throw writeError;
-      }
-      syncMessage("Your existing local data is now backed up to your cloud account.");
-    }
-    if ($("cloudStatus")) $("cloudStatus").textContent = "Cloud synced · " + new Date().toLocaleTimeString();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    setTimeout(() => { URL.revokeObjectURL(url); anchor.remove(); }, 1200);
+    return true;
   } catch (error) {
-    console.error("WalletZen Supabase sync error:", error);
-    syncMessage("Cloud sync is unavailable. Your local data remains on this device. " + friendlyError(error));
-    if ($("cloudStatus")) $("cloudStatus").textContent = "Offline / sync error · local data is safe";
-  } finally {
-    syncBusy = false;
+    console.error("WalletZen backup download failed:", error);
+    syncMessage("Could not download the backup. Your current device and cloud copies have not been changed.");
+    return false;
   }
 }
-async function pushWalletData(snapshot) {
-  if (!supabase || !activeUser || !snapshot) return;
-  pendingSnapshot = snapshot;
+function showSyncConflict(local, row, reason) {
+  conflictContext = {
+    local: cloneData(local),
+    cloud: cloneData(row?.data || {}),
+    row: row ? { updated_at: row.updated_at } : null,
+    reason
+  };
+  const localCount = countRecords(local);
+  const cloudCount = countRecords(row?.data || {});
+  const element = $("wzAccountSync");
+  if (element) {
+    element.innerHTML =
+      '<div style="font-weight:800;margin-bottom:6px;color:var(--text)">Two different saved copies were found.</div>' +
+      '<div style="margin-bottom:10px">No copy has been overwritten. This device has ' + localCount +
+      ' financial records; the cloud copy has ' + cloudCount + '.</div>' +
+      '<div style="display:grid;gap:8px">' +
+      '<button type="button" class="btn btn-primary" onclick="walletZenResolveSyncConflict(\'device\')">Keep this device\'s copy</button>' +
+      '<button type="button" class="btn btn-secondary" onclick="walletZenResolveSyncConflict(\'cloud\')">Use the cloud copy</button>' +
+      '</div>' +
+      '<div style="font-size:.68rem;margin-top:9px;color:var(--text3)">A JSON backup of the copy being replaced will be downloaded before the choice is applied.</div>';
+    element.setAttribute("role", "alert");
+    element.setAttribute("aria-live", "assertive");
+  }
+  if ($("cloudStatus")) $("cloudStatus").textContent = "Sync needs your choice · both copies preserved";
+  const modal = $("wzAccountModal");
+  if (modal) modal.classList.add("open");
+  console.warn("WalletZen sync conflict requires a choice:", reason);
+}
+function refreshConflictRow(row) {
+  const latestLocal = cloneData(localWalletData());
+  showSyncConflict(latestLocal, row, "cloud-changed-during-resolution");
+}
+async function fetchCloudRow() {
+  const { data, error } = await supabase
+    .from("walletzen_data")
+    .select("data, updated_at")
+    .eq("user_id", activeUser.id)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+async function insertCloudSnapshot(snapshot) {
+  const { data, error } = await supabase
+    .from("walletzen_data")
+    .insert({ user_id: activeUser.id, data: snapshot })
+    .select("data, updated_at")
+    .maybeSingle();
+  if (error) {
+    if (error.code === "23505") return { conflict: true, row: await fetchCloudRow() };
+    throw error;
+  }
+  return { conflict: false, row: data || null };
+}
+async function compareAndSwapCloudSnapshot(row, snapshot) {
+  const previousMs = Date.parse(row.updated_at);
+  const nextTimestamp = new Date((Number.isFinite(previousMs) ? previousMs : Date.now()) + 1).toISOString();
+  const { data, error } = await supabase
+    .from("walletzen_data")
+    .update({ data: snapshot, updated_at: nextTimestamp })
+    .eq("user_id", activeUser.id)
+    .eq("updated_at", row.updated_at)
+    .select("updated_at")
+    .maybeSingle();
+  if (error) throw error;
+  return data?.updated_at || null;
+}
+function scheduleSync(delay = 900) {
   if (syncTimer) clearTimeout(syncTimer);
-  syncTimer = setTimeout(async () => {
-    const latest = pendingSnapshot;
-    pendingSnapshot = null;
-    if (!latest || !activeUser) return;
-    try {
-      const { error } = await supabase.from("walletzen_data").upsert({
-        user_id: activeUser.id,
-        data: latest,
-        updated_at: new Date().toISOString()
-      }, { onConflict: "user_id" });
-      if (error) throw error;
+  syncTimer = setTimeout(() => {
+    syncTimer = null;
+    syncWalletData();
+  }, delay);
+}
+async function uploadLocalSnapshot(row, snapshot, snapshotRevision) {
+  const updatedAt = row
+    ? await compareAndSwapCloudSnapshot(row, snapshot)
+    : (await insertCloudSnapshot(snapshot)).row?.updated_at || null;
+  if (!updatedAt) {
+    const latest = await fetchCloudRow();
+    if (latest) showSyncConflict(snapshot, latest, "concurrent-cloud-write");
+    else syncMessage("Cloud backup could not be confirmed. Your local copy is still saved on this device.");
+    return false;
+  }
+  markSynced(updatedAt, snapshotRevision);
+  retryCount = 0;
+  syncMessage("Cloud backup up to date · " + new Date().toLocaleTimeString());
+  if ($("cloudStatus")) $("cloudStatus").textContent = "Cloud synced · " + new Date().toLocaleTimeString();
+  return true;
+}
+async function syncWalletData() {
+  if (!activeUser || !supabase) return false;
+  if (syncBusy) {
+    syncRequested = true;
+    return false;
+  }
+  if (conflictContext) {
+    const latest = await fetchCloudRow().catch(() => null);
+    if (latest && conflictContext.row?.updated_at !== latest.updated_at) {
+      refreshConflictRow(latest);
+    }
+    return false;
+  }
+
+  syncBusy = true;
+  syncMessage("Checking your cloud backup…");
+  if ($("cloudStatus")) $("cloudStatus").textContent = "Syncing cloud data…";
+  try {
+    const local = cloneData(localWalletData());
+    const meta = readSyncMeta();
+    if (meta.ownerUserId && meta.ownerUserId !== activeUser.id) {
+      throw new Error("This device's saved data belongs to another account. Reload WalletZen before switching accounts.");
+    }
+    const snapshotRevision = Number(meta.localRevision || 0);
+    const localPending = localHasPendingChanges(meta, activeUser.id);
+    let row = await fetchCloudRow();
+
+    if (!row) {
+      const inserted = await insertCloudSnapshot(local);
+      if (inserted.conflict) row = inserted.row;
+      else if (inserted.row) {
+        markSynced(inserted.row.updated_at, snapshotRevision);
+        retryCount = 0;
+        syncMessage("Your device data is now backed up to your cloud account.");
+        if ($("cloudStatus")) $("cloudStatus").textContent = "Cloud synced · " + new Date().toLocaleTimeString();
+        return true;
+      }
+      if (!row) throw new Error("Cloud backup could not be created or verified.");
+    }
+
+    const cloud = row.data && typeof row.data === "object" ? row.data : {};
+    const identical = sameData(local, cloud);
+    const hasLocal = hasMeaningfulData(local);
+    const hasCloud = hasMeaningfulData(cloud);
+    const hasBaseline = !!meta.lastSyncedCloudUpdatedAt;
+    const cloudChanged = hasBaseline && row.updated_at !== meta.lastSyncedCloudUpdatedAt;
+
+    if (identical) {
+      markSynced(row.updated_at, snapshotRevision);
+      retryCount = 0;
       syncMessage("Cloud backup up to date · " + new Date().toLocaleTimeString());
       if ($("cloudStatus")) $("cloudStatus").textContent = "Cloud synced · " + new Date().toLocaleTimeString();
-    } catch (error) {
-      console.error("WalletZen Supabase write error:", error);
-      syncMessage("Cloud sync failed; changes are still saved locally. " + friendlyError(error));
-      if ($("cloudStatus")) $("cloudStatus").textContent = "Sync error · local data is safe";
+      return true;
     }
-  }, 850);
+
+    if (hasBaseline) {
+      if (localPending && cloudChanged) {
+        showSyncConflict(local, row, "both-device-and-cloud-changed");
+        return false;
+      }
+      if (localPending && !cloudChanged) {
+        const saved = await uploadLocalSnapshot(row, local, snapshotRevision);
+        if (!saved) return false;
+        return true;
+      }
+      if (!localPending && cloudChanged) {
+        applyWalletData(cloud);
+        markSynced(row.updated_at, snapshotRevision);
+        retryCount = 0;
+        syncMessage("Cloud changes loaded onto this device.");
+        if ($("cloudStatus")) $("cloudStatus").textContent = "Cloud synced · " + new Date().toLocaleTimeString();
+        return true;
+      }
+      // A changed local copy without a matching durable pending marker is ambiguous.
+      showSyncConflict(local, row, "untracked-local-change");
+      return false;
+    }
+
+    // First sync on an older installation: never assume which non-empty copy is newer.
+    if (!hasLocal && hasCloud) {
+      applyWalletData(cloud);
+      markSynced(row.updated_at, snapshotRevision);
+      retryCount = 0;
+      syncMessage("Cloud data loaded onto this device.");
+      if ($("cloudStatus")) $("cloudStatus").textContent = "Cloud synced · " + new Date().toLocaleTimeString();
+      return true;
+    }
+    if (hasLocal && !hasCloud && meta.ownerUserId === activeUser.id && localPending) {
+      const saved = await uploadLocalSnapshot(row, local, snapshotRevision);
+      return saved;
+    }
+    if (!hasLocal && !hasCloud) {
+      applyWalletData(cloud);
+      markSynced(row.updated_at, snapshotRevision);
+      retryCount = 0;
+      syncMessage("Cloud backup up to date.");
+      if ($("cloudStatus")) $("cloudStatus").textContent = "Cloud synced";
+      return true;
+    }
+    showSyncConflict(local, row, "first-sync-legacy-data");
+    return false;
+  } catch (error) {
+    console.error("WalletZen Supabase sync error:", error);
+    syncMessage("Cloud sync is unavailable. Your changes remain saved on this device and will retry when you reconnect. " + friendlyError(error));
+    if ($("cloudStatus")) $("cloudStatus").textContent = "Sync pending · local copy preserved";
+    if (navigator.onLine && !conflictContext) {
+      retryCount = Math.min(retryCount + 1, 6);
+      if (retryTimer) clearTimeout(retryTimer);
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        syncWalletData();
+      }, Math.min(60000, 1500 * Math.pow(2, retryCount - 1)));
+    }
+    return false;
+  } finally {
+    syncBusy = false;
+    if (syncRequested) {
+      syncRequested = false;
+      scheduleSync(300);
+    }
+  }
 }
-window.WalletZenCloud = { queueSync: pushWalletData };
+function queueSync(snapshot) {
+  if (applyingRemoteData || !snapshot) return;
+  const meta = readSyncMeta();
+  meta.localRevision = Number(meta.localRevision || 0) + 1;
+  meta.pending = true;
+  meta.pendingUserId = activeUser?.id || meta.pendingUserId || meta.ownerUserId || null;
+  meta.localModifiedAt = new Date().toISOString();
+  writeSyncMeta(meta);
+  if (conflictContext) {
+    syncMessage("Saved on this device. Resolve the two-copy sync notice before syncing.");
+    return;
+  }
+  syncMessage("Saved on this device · cloud backup pending");
+  if ($("cloudStatus")) $("cloudStatus").textContent = "Cloud backup pending";
+  if (activeUser && supabase && navigator.onLine) scheduleSync(900);
+}
+window.WalletZenCloud = { queueSync };
+window.walletZenSyncNow = syncWalletData;
 window.openWalletZenAccount = () => {
   const modal = $("wzAccountModal");
   if (modal) modal.classList.add("open");
-  syncMessage("WalletZen is signed in with " + (activeUser?.email || "your Supabase account") + ".");
+  if (conflictContext) {
+    const latest = conflictContext.row ? { data: conflictContext.cloud, updated_at: conflictContext.row.updated_at } : null;
+    if (latest) showSyncConflict(conflictContext.local, latest, conflictContext.reason);
+  } else {
+    syncMessage("WalletZen is signed in with " + (activeUser?.email || "your Supabase account") + ".");
+  }
 };
 window.closeWalletZenAccount = () => $("wzAccountModal")?.classList.remove("open");
 window.walletZenToggleMode = () => configureGateMode(authMode === "signup" ? "login" : authMode === "recovery" ? "login" : "signup");
@@ -165,9 +466,57 @@ window.walletZenTogglePassword = () => {
   field.type = show ? "text" : "password";
   if ($("authGatePasswordToggle")) $("authGatePasswordToggle").setAttribute("aria-label", show ? "Hide password" : "Show password");
 };
+window.walletZenResolveSyncConflict = async choice => {
+  if (!conflictContext || !activeUser || !supabase) return;
+  const context = conflictContext;
+  const current = cloneData(localWalletData());
+  const meta = readSyncMeta();
+  const revision = Number(meta.localRevision || 0);
+  try {
+    if (choice === "cloud") {
+      if (!downloadBackup(current, "walletzen_device_backup_" + new Date().toISOString().slice(0, 10) + ".json")) return;
+      applyWalletData(context.cloud);
+      conflictContext = null;
+      markSynced(context.row?.updated_at, revision);
+      syncMessage("Cloud copy selected. A backup of the previous device copy was downloaded.");
+      if ($("cloudStatus")) $("cloudStatus").textContent = "Cloud synced · " + new Date().toLocaleTimeString();
+      $("wzAccountModal")?.classList.remove("open");
+      return;
+    }
+    if (choice === "device") {
+      if (!downloadBackup(context.cloud, "walletzen_cloud_backup_" + new Date().toISOString().slice(0, 10) + ".json")) return;
+      if (!context.row) {
+        const inserted = await insertCloudSnapshot(current);
+        if (inserted.conflict && inserted.row) {
+          refreshConflictRow(inserted.row);
+          return;
+        }
+        if (!inserted.row) throw new Error("Could not create the cloud copy.");
+        markSynced(inserted.row.updated_at, revision);
+      } else {
+        const updatedAt = await compareAndSwapCloudSnapshot(context.row, current);
+        if (!updatedAt) {
+          const latest = await fetchCloudRow();
+          if (latest) refreshConflictRow(latest);
+          else throw new Error("Could not verify the cloud row.");
+          return;
+        }
+        markSynced(updatedAt, revision);
+      }
+      conflictContext = null;
+      syncMessage("This device's copy is now the cloud backup. A backup of the previous cloud copy was downloaded.");
+      if ($("cloudStatus")) $("cloudStatus").textContent = "Cloud synced · " + new Date().toLocaleTimeString();
+      $("wzAccountModal")?.classList.remove("open");
+      return;
+    }
+  } catch (error) {
+    console.error("WalletZen conflict resolution error:", error);
+    syncMessage("The conflict was not resolved. Both saved copies remain unchanged. " + friendlyError(error));
+  }
+};
 window.walletZenSupabaseSubmit = async () => {
   if (!supabase) {
-    gateMessage("Sign-in is temporarily unavailable. Please try again later.", "error");
+    gateMessage("Sign-in is temporarily unavailable. Please try again later.");
     return;
   }
   const email = ($("authGateEmail")?.value || "").trim();
@@ -219,7 +568,7 @@ window.walletZenSupabaseSubmit = async () => {
 };
 window.walletZenSupabaseGoogle = async () => {
   if (!supabase) {
-    gateMessage("Sign-in is temporarily unavailable. Please try again later.", "error");
+    gateMessage("Sign-in is temporarily unavailable. Please try again later.");
     return;
   }
   setFormBusy(true);
@@ -236,7 +585,7 @@ window.walletZenSupabaseGoogle = async () => {
 };
 window.walletZenSupabaseReset = async () => {
   if (!supabase) {
-    gateMessage("Configure Supabase before resetting passwords.", "error");
+    gateMessage("Configure Supabase before resetting passwords.");
     return;
   }
   const email = ($("authGateEmail")?.value || "").trim();
@@ -259,6 +608,13 @@ window.walletZenSupabaseReset = async () => {
 };
 window.walletZenSupabaseSignOut = async () => {
   if (!supabase) return;
+  const meta = readSyncMeta();
+  if (localHasPendingChanges(meta, activeUser?.id)) {
+    await syncWalletData();
+    const afterSync = readSyncMeta();
+    if (localHasPendingChanges(afterSync, activeUser?.id) &&
+        !window.confirm("Some changes are still waiting for cloud backup. They remain on this device. Sign out anyway?")) return;
+  }
   const { error } = await supabase.auth.signOut();
   if (error) {
     syncMessage(friendlyError(error));
@@ -267,11 +623,22 @@ window.walletZenSupabaseSignOut = async () => {
   $("wzAccountModal")?.classList.remove("open");
   gateMessage("You have signed out. Sign in again to open your finance dashboard.", "success");
 };
+function isolateUserStorage(userId) {
+  const meta = readSyncMeta();
+  if (!meta.ownerUserId || meta.ownerUserId === userId) return false;
+  const raw = localStorage.getItem(APP_DATA_KEY);
+  if (raw) localStorage.setItem("walletzen_local_backup_" + meta.ownerUserId, raw);
+  if (syncTimer) clearTimeout(syncTimer);
+  if (retryTimer) clearTimeout(retryTimer);
+  localStorage.removeItem(APP_DATA_KEY);
+  writeSyncMeta(Object.assign({}, DEFAULT_META, { ownerUserId: userId }));
+  return true;
+}
 async function handleAuthSession(session, event) {
   const nextUser = session?.user || null;
   if (event === "PASSWORD_RECOVERY" && nextUser) {
     activeUser = nextUser;
-    showSignIn(false);
+    showSignIn();
     configureGateMode("recovery");
     gateMessage("Set a new password to finish recovering your account.", "success");
     if ($("authGatePassword")) $("authGatePassword").focus();
@@ -284,10 +651,21 @@ async function handleAuthSession(session, event) {
     configureGateMode("login");
     return;
   }
+  try {
+    if (isolateUserStorage(nextUser.id)) {
+      // A different account signed in on this browser. Keep the previous local
+      // snapshot under its old account key, then restart with a clean local store.
+      window.location.reload();
+      return;
+    }
+  } catch (error) {
+    console.error("WalletZen local account isolation failed:", error);
+    showSignIn();
+    gateMessage("This device could not safely switch accounts because its local backup could not be preserved.", "error");
+    return;
+  }
   const needsInitialSync = lastLoadedUserId !== nextUser.id;
   if (needsInitialSync) {
-    // Initialize the existing local store while the app wrapper is still hidden,
-    // then let cloud state replace local state before showing the dashboard.
     activeUser = nextUser;
     if (typeof window.WalletZenStartApp === "function") window.WalletZenStartApp();
     await syncWalletData();
@@ -297,14 +675,12 @@ async function handleAuthSession(session, event) {
 }
 async function initializeSupabase() {
   if (!isSupabaseConfigured()) {
-    // Keep the public-facing screen clean; configuration details belong in developer setup docs.
     showSignIn();
     configureGateMode("login");
     return;
   }
   try {
-    // Load the pinned SDK on demand so its download does not block first paint of the login UI.
-    const sdkModule = await import("https://esm.sh/@supabase/supabase-js@2.118.0?bundle");
+    const sdkModule = await import("https://esm.sh/@supabase/supabase-js@2.119.0?bundle");
     supabase = sdkModule.createClient(supabaseUrl, supabaseAnonKey, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
     });
@@ -312,17 +688,23 @@ async function initializeSupabase() {
       authEventQueue = authEventQueue.then(() => handleAuthSession(session, event)).catch(error => {
         console.error("WalletZen auth-state error:", error);
         showSignIn();
+        gateMessage("WalletZen could not restore your session. Please sign in again.", "error");
       });
     });
   } catch (error) {
-    supabaseSdkLoadFailed = true;
     console.error("Could not initialize Supabase:", error);
     showSignIn();
+    gateMessage("Secure sign-in could not load. Check your connection and reopen WalletZen.", "error");
   }
 }
-function start() {
-  // The form is rendered in the HTML immediately. Session restoration replaces it with
-  // the dashboard when valid, while the user can see the screen without waiting for the SDK.
-  initializeSupabase();
-}
-document.addEventListener("DOMContentLoaded", start);
+window.addEventListener("online", () => {
+  if (activeUser && supabase) syncWalletData();
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && activeUser && supabase) syncWalletData();
+  if (document.visibilityState === "hidden" && activeUser && supabase) syncWalletData();
+});
+window.addEventListener("pagehide", () => {
+  if (activeUser && supabase) syncWalletData();
+});
+document.addEventListener("DOMContentLoaded", initializeSupabase);

@@ -2201,7 +2201,7 @@ document.addEventListener('keydown',e=>{
 });
 document.addEventListener('click',e=>{if(!e.target.closest('.dropdown'))document.querySelectorAll('.dropdown-menu.open').forEach(d=>d.classList.remove('open'))});
 
-window.WalletZenGetData=()=>DB;window.WalletZenSetCloudData=data=>{if(data&&typeof data==="object"){DB=Object.assign(DB,data);save();refresh()}};
+window.WalletZenGetData=()=>DB;window.WalletZenSetCloudData=(data,replace=false)=>{if(data&&typeof data==="object"){DB=replace?Object.assign({},data):Object.assign(DB,data);save();refresh()}};
 // ===================== INIT =====================
 let walletZenAppInitialized=false;
 function initializeWalletZenApp(){
