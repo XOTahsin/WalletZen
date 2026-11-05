@@ -1208,11 +1208,12 @@ function refresh(){const sec=document.querySelector('.section.active');if(sec)re
 // ===================== STORAGE =====================
 function save(){try{localStorage.setItem('walletzen_v2',JSON.stringify(DB));if(window.WalletZenCloud)window.WalletZenCloud.queueSync(DB)}catch(e){toast('Storage full — export a backup','error')}}
 function normalizeDB(){
-  DB.categories=DB.categories||{expense:[],income:[]};
-  DB.settings=DB.settings||{};
-  if(!DB.categories.expense||!DB.categories.expense.length)DB.categories.expense=DEFAULT_EXP_CATS.slice();
-  if(!DB.categories.income||!DB.categories.income.length)DB.categories.income=DEFAULT_INC_CATS.slice();
-  if(!DB.accounts||!DB.accounts.length)DB.accounts=defaultAccounts();
+  if(!DB||typeof DB!=='object'||Array.isArray(DB))DB={};
+  if(!DB.categories||typeof DB.categories!=='object'||Array.isArray(DB.categories))DB.categories={expense:[],income:[]};
+  if(!DB.settings||typeof DB.settings!=='object'||Array.isArray(DB.settings))DB.settings={};
+  if(!Array.isArray(DB.categories.expense)||!DB.categories.expense.length)DB.categories.expense=DEFAULT_EXP_CATS.slice();
+  if(!Array.isArray(DB.categories.income)||!DB.categories.income.length)DB.categories.income=DEFAULT_INC_CATS.slice();
+  if(!Array.isArray(DB.accounts)||!DB.accounts.length)DB.accounts=defaultAccounts();
   if(!DB.settings.currency)DB.settings.currency='৳';
   if(!DB.settings.name)DB.settings.name='My Finance';
   // migrate old light/dark setting to new palettes
@@ -1220,7 +1221,7 @@ function normalizeDB(){
   if(!DB.settings.gradient)DB.settings.gradient='aurora';
   if(DB.settings.paletteV!==2){DB.settings.palette='green';DB.settings.paletteV=2}
   ['transactions','subscriptions','loans','goals','budgets'].forEach(k=>{if(!Array.isArray(DB[k]))DB[k]=[]});
-  if(!DB.biz||typeof DB.biz!=='object')DB.biz=defaultBiz();
+  DB.biz=DB.biz&&typeof DB.biz==='object'&&!Array.isArray(DB.biz)?Object.assign(defaultBiz(),DB.biz):defaultBiz();
   ['sectors','items','entries'].forEach(k=>{if(!Array.isArray(DB.biz[k]))DB.biz[k]=[]});
   if(!DB.biz.sectors.length)DB.biz.sectors=DEFAULT_SECTORS.map(x=>Object.assign({},x));
 }
