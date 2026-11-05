@@ -501,7 +501,7 @@ window.walletZenResolveSyncConflict = async choice => {
       return;
     }
     if (choice === "device") {
-      if (!downloadBackup(context.cloud, "walletzen_cloud_backup_" + new Date().toISOString().slice(0, 10) + ".json")) return;
+      if (context.row && !downloadBackup(context.cloud, "walletzen_cloud_backup_" + new Date().toISOString().slice(0, 10) + ".json")) return;
       if (!context.row) {
         const inserted = await insertCloudSnapshot(current);
         if (inserted.conflict && inserted.row) {
@@ -521,7 +521,7 @@ window.walletZenResolveSyncConflict = async choice => {
         markSynced(updatedAt, revision);
       }
       conflictContext = null;
-      syncMessage("This device's copy is now the cloud backup. A backup of the previous cloud copy was downloaded.");
+      syncMessage(context.row ? "This device's copy is now the cloud backup. A backup of the previous cloud copy was downloaded." : "This device's copy is now backed up to your cloud account.");
       if ($("cloudStatus")) $("cloudStatus").textContent = "Cloud synced · " + new Date().toLocaleTimeString();
       $("wzAccountModal")?.classList.remove("open");
       return;

@@ -1207,9 +1207,7 @@ function refresh(){const sec=document.querySelector('.section.active');if(sec)re
 
 // ===================== STORAGE =====================
 function save(){try{localStorage.setItem('walletzen_v2',JSON.stringify(DB));if(window.WalletZenCloud)window.WalletZenCloud.queueSync(DB)}catch(e){toast('Storage full — export a backup','error')}}
-function load(){
-  const raw=localStorage.getItem('walletzen_v2');
-  if(raw){try{const p=JSON.parse(raw);DB=Object.assign(DB,p)}catch(e){}}
+function normalizeDB(){
   DB.categories=DB.categories||{expense:[],income:[]};
   DB.settings=DB.settings||{};
   if(!DB.categories.expense||!DB.categories.expense.length)DB.categories.expense=DEFAULT_EXP_CATS.slice();
@@ -1221,10 +1219,18 @@ function load(){
   if(!DB.settings.palette){DB.settings.palette=DB.settings.theme==='light'?'light':(DB.settings.theme==='dark'?'violet':'shark')}
   if(!DB.settings.gradient)DB.settings.gradient='aurora';
   if(DB.settings.paletteV!==2){DB.settings.palette='green';DB.settings.paletteV=2}
-  ['transactions','subscriptions','loans','goals','budgets'].forEach(k=>{if(!DB[k])DB[k]=[]});
+  ['transactions','subscriptions','loans','goals','budgets'].forEach(k=>{if(!Array.isArray(DB[k]))DB[k]=[]});
   if(!DB.biz||typeof DB.biz!=='object')DB.biz=defaultBiz();
   ['sectors','items','entries'].forEach(k=>{if(!Array.isArray(DB.biz[k]))DB.biz[k]=[]});
   if(!DB.biz.sectors.length)DB.biz.sectors=DEFAULT_SECTORS.map(x=>Object.assign({},x));
+}
+function load(){
+  const raw=localStorage.getItem('walletzen_v2');
+  if(raw){try{const p=JSON.parse(raw);if(p&&typeof p==='object'&&!Array.isArray(p))DB=Object.assign(DB,p)}catch(e){
+    try{localStorage.setItem('walletzen_corrupt_backup_'+Date.now(),raw)}catch(_){ }
+    console.error('WalletZen could not read its saved local data. A raw recovery copy was retained when storage allowed.');
+  }}
+  normalizeDB();
 }
 
 // ===================== THEME ENGINE =====================
@@ -2200,7 +2206,7 @@ document.addEventListener('keydown',e=>{
 });
 document.addEventListener('click',e=>{if(!e.target.closest('.dropdown'))document.querySelectorAll('.dropdown-menu.open').forEach(d=>d.classList.remove('open'))});
 
-window.WalletZenGetData=()=>DB;window.WalletZenSetCloudData=(data,replace=false)=>{if(data&&typeof data==="object"){DB=replace?Object.assign({},data):Object.assign(DB,data);save();refresh()}};
+window.WalletZenGetData=()=>DB;window.WalletZenSetCloudData=(data,replace=false)=>{if(data&&typeof data==="object"&&!Array.isArray(data)){const base={accounts:[],transactions:[],budgets:[],goals:[],subscriptions:[],loans:[],categories:{expense:[],income:[]},settings:{},biz:defaultBiz(),version:2};DB=replace?Object.assign(base,data):Object.assign(DB,data);normalizeDB();save();refresh()}};
 // ===================== INIT =====================
 let walletZenAppInitialized=false;
 function initializeWalletZenApp(){
