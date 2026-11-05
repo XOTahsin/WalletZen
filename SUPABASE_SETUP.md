@@ -31,6 +31,7 @@ For Google login:
 - Pending writes retry after reconnection, when the app becomes visible, and at the next authenticated launch. Page lifecycle events trigger a best-effort immediate flush, but the durable local marker—not the lifecycle callback—is the recovery mechanism.
 - Each cloud write uses an optimistic concurrency check against the row's current \`updated_at\`. If another device changes the row first, WalletZen does not overwrite it.
 - On older installations with no prior sync checkpoint, two different non-empty copies are treated as a conflict. The app asks whether to keep the device copy or the cloud copy. It downloads a JSON backup of the copy being replaced before applying the choice.
+- If a device contains meaningful legacy data but no cloud row exists and no account ownership marker is present, WalletZen pauses before uploading it to the newly signed-in account. The user must explicitly choose to keep and upload the device copy. If no cloud copy exists, the cloud-choice button is not shown.
 - A legacy local copy is not automatically assigned to a new account. When one device account is switched to another, the prior device snapshot is saved under an account-specific local backup key and the app restarts with an isolated local store.
 - Offline changes remain in the browser and are retried later. They are not guaranteed to reach Supabase until a successful sync is confirmed.
 
