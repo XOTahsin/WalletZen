@@ -490,7 +490,7 @@ window.walletZenResolveSyncConflict = async choice => {
     if (choice === "cloud") {
       // Re-check the selected cloud version immediately before applying it.
       const latest = await fetchCloudRow();
-      if (!latest) throw new Error("The cloud row is no longer available. No local data was changed.");
+      if (!latest) { refreshConflictRow(null); return; }
       if (latest.updated_at !== context.row?.updated_at) {
         refreshConflictRow(latest);
         return;
@@ -515,14 +515,24 @@ window.walletZenResolveSyncConflict = async choice => {
         if (!inserted.row) throw new Error("Could not create the cloud copy.");
         markSynced(inserted.row.updated_at, revision);
       } else {
-        const updatedAt = await compareAndSwapCloudSnapshot(context.row, current);
-        if (!updatedAt) {
-          const latest = await fetchCloudRow();
-          if (latest) refreshConflictRow(latest);
-          else throw new Error("Could not verify the cloud row.");
+        const latest = await fetchCloudRow();
+        if (!latest) {
+          const inserted = await insertCloudSnapshot(current);
+          if (inserted.conflict && inserted.row) { refreshConflictRow(inserted.row); return; }
+          if (!inserted.row) throw new Error("Could not recreate the missing cloud backup.");
+          markSynced(inserted.row.updated_at, revision);
+        } else if (latest.updated_at !== context.row.updated_at) {
+          refreshConflictRow(latest);
           return;
+        } else {
+          const updatedAt = await compareAndSwapCloudSnapshot(latest, current);
+          if (!updatedAt) {
+            const newest = await fetchCloudRow();
+            refreshConflictRow(newest);
+            return;
+          }
+          markSynced(updatedAt, revision);
         }
-        markSynced(updatedAt, revision);
       }
       conflictContext = null;
       syncMessage(context.row ? "This device's copy is now the cloud backup. A backup of the previous cloud copy was downloaded." : "This device's copy is now backed up to your cloud account.");
@@ -655,10 +665,13 @@ function isolateUserStorage(userId) {
       : backupBase + "_" + new Date().toISOString().replace(/[:.]/g, "-");
     localStorage.setItem(backupKey, raw);
   }
+  // Write the new owner marker before removing the old active snapshot. If
+  // storage is full, fail closed and leave the previous data in place.
+  const nextMeta = Object.assign({}, DEFAULT_META, { ownerUserId: userId });
+  if (!writeSyncMeta(nextMeta)) throw new Error("Could not safely persist the new account marker.");
   if (syncTimer) clearTimeout(syncTimer);
   if (retryTimer) clearTimeout(retryTimer);
   localStorage.removeItem(APP_DATA_KEY);
-  writeSyncMeta(Object.assign({}, DEFAULT_META, { ownerUserId: userId }));
   return true;
 }
 async function handleAuthSession(session, event) {
