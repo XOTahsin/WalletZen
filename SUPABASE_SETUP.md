@@ -1,43 +1,54 @@
-# WalletZen — Supabase setup
+# WalletZen — Supabase setup and sync behavior
 
-The app uses Supabase Auth for email/password and Google OAuth, with a persistent browser session. The dashboard is hidden behind the sign-in screen until a saved Supabase session is restored. Existing local WalletZen data remains in the browser; first sign-in uploads it if that user has no cloud row. If a cloud row already exists, it is loaded onto this device.
+WalletZen uses Supabase Auth for email/password and Google OAuth. The finance data is stored locally first in the browser's existing `walletzen_v2` key, then backed up to the authenticated user's private row in `public.walletzen_data`.
 
-## 1. Project and client connection
-The WalletZen Supabase project has been created and the public project URL/publishable key are already configured in `supabase-config.js`.
+## Project connection
+
 - Project dashboard: https://supabase.com/dashboard/project/djytqqgaydbpfyhchfkh
 - Project URL: `https://djytqqgaydbpfyhchfkh.supabase.co`
-- The frontend uses the publishable key, which is designed for browser clients. Never put a `service_role` or secret key in browser code.
-- The project URL and public key are not authentication provider credentials; Google OAuth still needs a Google OAuth Client ID and Client Secret configured in Supabase.
+- The frontend uses a public publishable key. Never put a `service_role` or secret key in browser code.
+- Google OAuth still requires a Google OAuth Client ID and Client Secret configured in Supabase.
 
-## 2. Database and row-level security
-The `public.walletzen_data` table is already created in the connected project and Row Level Security is enabled. Four policies restrict SELECT, INSERT, UPDATE, and DELETE to rows where `user_id = auth.uid()`. The connected database was checked for the expected schema and policies, and current Supabase security/performance advisor checks returned no notices.
-The reproducible schema is kept in `supabase/schema.sql`.
+## Database and row-level security
 
-## 3. Configure email authentication
-In Authentication > URL Configuration, set Site URL to `https://walletzen.vercel.app` (or your actual active deployment URL if different). Add `https://walletzen.vercel.app/**` and any local development URL you use to Redirect URLs. In Authentication > Sign In / Providers, confirm Email is enabled. Depending on your confirmation settings, new users may need to confirm their email before they can sign in.
+The existing `public.walletzen_data` table is retained. RLS must remain enabled, with SELECT, INSERT, UPDATE, and DELETE policies restricting each row to `user_id = auth.uid()`. The reproducible policy definitions are in `supabase/schema.sql`.
 
-## 4. Enable Google login
-1. In Supabase Authentication > Sign In / Providers > Google, enable the provider.
-2. Follow the Supabase provider instructions to create a Google OAuth client in Google Cloud Console.
-3. Add the callback URL shown in Supabase to the Google OAuth client's authorized redirect URIs.
-4. Put the Google client ID/secret in Supabase's provider settings (not in this GitHub repo).
-5. Save, and ensure your deployed WalletZen URL is listed in Supabase Auth Redirect URLs.
+The sync repair does not delete, truncate, reset, or rewrite existing user rows. It uses conditional updates against the row's current `updated_at` value so a concurrent device update cannot be silently overwritten.
 
-## 5. Deploy and verify
-Deploy the latest `main` branch on the hosting service connected to this repository. If you're using an installed PWA, close the app completely and reopen it after the deployment; the service worker cache was bumped to v4. A hard refresh (Ctrl+F5) can help on desktop.
-Test:
-- New account creation and email confirmation if enabled.
-- Email/password login.
-- Google OAuth sign-in and return redirect.
-- Refresh/reopen while signed in: it should restore the session and open the dashboard, not ask again.
-- First login with an empty cloud row: existing local data should be uploaded.
-- Another device login: it should retrieve the cloud data for the same user.
-- Sign out: it returns to the sign-in screen; the local device data stays saved.
-- Network unavailable: local work remains possible once a session has already opened the app; cloud updates queue until a save is triggered again.
+## Authentication configuration
 
-## Data behavior and safety
-- Each user's entire current WalletZen data object is stored as one JSONB row. This is simple for a small single-user finance app; it may be split into per-collection rows later.
-- Existing cloud data takes precedence over local data on a device when that account signs in. Export a JSON backup first if the two copies may differ.
-- The browser always saves to the pre-existing `walletzen_v2` localStorage key first.
-- The Supabase URL and publishable/anon key are intended for browser use; access is controlled by Auth and RLS. Do not commit service-role secrets.
-- The app's sign-in screen is styled responsively; adjust `--wz-auth-card-max`, `--wz-auth-layout-max`, and `--wz-auth-card-padding` in the CSS to change the login card's maximum width and spacing.
+In Authentication > URL Configuration, set the Site URL to `https://walletzen.vercel.app` (or the active deployment URL). Add `https://walletzen.vercel.app/**` and any local development URL you use to Redirect URLs. Confirm Email is enabled as intended.
+
+For Google login:
+1. Enable Google under Authentication > Sign In / Providers.
+2. Create a Google OAuth client in Google Cloud Console.
+3. Add the callback URL shown by Supabase to the OAuth client's authorized redirect URIs.
+4. Add the client ID and secret in Supabase provider settings, not in this repository.
+
+## Sync safety behavior
+
+- Every app save writes the main local data key first. The sync module then persists a small pending marker and local revision in `localStorage` before attempting the network request.
+- Pending writes retry after reconnection, when the app becomes visible, and at the next authenticated launch. Page lifecycle events trigger a best-effort immediate flush, but the durable local marker—not the lifecycle callback—is the recovery mechanism.
+- Each cloud write uses an optimistic concurrency check against the row's current `updated_at`. If another device changes the row first, WalletZen does not overwrite it.
+- On older installations with no prior sync checkpoint, two different non-empty copies are treated as a conflict. The app asks whether to keep the device copy or the cloud copy. It downloads a JSON backup of the copy being replaced before applying the choice.
+- If a device contains meaningful legacy data but no cloud row exists and no account ownership marker is present, WalletZen pauses before uploading it to the newly signed-in account. The user must explicitly choose to keep and upload the device copy. If no cloud copy exists, the cloud-choice button is not shown.
+- A legacy local copy is not automatically assigned to a new account. When one device account is switched to another, the prior device snapshot is saved under an account-specific local backup key and the app restarts with an isolated local store.
+- Offline changes remain in the browser and are retried later. They are not guaranteed to reach Supabase until a successful sync is confirmed.
+
+## PWA update
+
+The service worker cache is versioned as `walletzen-v5`. Close the installed WalletZen app completely, open it while connected to the internet, and allow the new service worker to activate. If an older shell remains open, close and reopen it once more.
+
+## Verification checklist
+
+1. Sign in and confirm the dashboard opens.
+2. Add a test transaction; confirm the account panel reports that the cloud backup is up to date.
+3. Reopen WalletZen and confirm the transaction remains present.
+4. On another browser/device using the same account, sign in and confirm the cloud data loads.
+5. Turn off the network, add a test record, close and reopen while offline if the app shell and Supabase SDK have been cached, then reconnect. Confirm the pending status clears after upload.
+6. Test a concurrent edit from two devices. WalletZen should display the two-copy resolution prompt rather than silently replacing either copy.
+7. Sign out and sign in with a different account on the same browser. The previous local account's data must not appear in the new account.
+
+## Data export
+
+Before changing devices or clearing browser data, use Settings > Data Management > Export JSON. Keep the backup outside the app's browser storage.

@@ -1113,7 +1113,6 @@ body[data-gradient="solid"]::before{display:none}
   <div class="modal-footer"><button class="btn btn-primary" onclick="closeModal('installModal')">Got it</button></div>
 </div></div>
 
-<div class="modal-overlay" id="accountModal" style="z-index:1200;align-items:center;justify-content:center;padding:14px"><div class="auth-panel" role="dialog" aria-modal="true" aria-labelledby="authTitle"><button class="auth-close" onclick="closeAccountModal()" aria-label="Close">✕</button><h2 id="authTitle">Your WalletZen account</h2><p class="auth-sub" id="authSubtitle">Sign in to sync your finance data across devices.</p><div id="authSignedOut"><div class="auth-field"><label for="authEmail">Email address</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com"></div><div class="auth-field"><label for="authPassword">Password</label><input id="authPassword" type="password" autocomplete="current-password" placeholder="At least 6 characters"></div><div class="auth-actions"><button class="auth-btn" id="authEmailSubmit" onclick="walletZenEmailAction('login')">Log in</button><button class="auth-btn secondary" onclick="walletZenEmailAction('signup')">Create account</button><div style="text-align:center;color:var(--text3);font-size:.75rem">OR</div><button class="auth-btn secondary" onclick="walletZenGoogleLogin()">Continue with Google</button><button class="auth-btn secondary" onclick="walletZenResetPassword()">Forgot password?</button></div></div><div id="authSignedIn" style="display:none"><p id="authUserSummary" class="auth-sub"></p><div class="auth-actions"><button class="auth-btn" onclick="walletZenSyncNow()">Sync now</button><button class="auth-btn secondary" onclick="walletZenSignOut()">Log out</button></div></div><p class="auth-message" id="authMessage" role="status" aria-live="polite"></p><p class="auth-footer">Local data remains available offline. Configure Firebase and deploy the included security rules before storing real financial data.</p></div></div>
 <div class="modal-overlay" id="wzAccountModal"><div class="modal"><div class="modal-header"><div class="modal-title">WalletZen account</div><button class="modal-close" onclick="closeWalletZenAccount()"><i data-ic="close" data-s="16"></i></button></div><div class="wz-account-email" id="wzAccountEmail">Checking account…</div><div class="wz-account-sync" id="wzAccountSync">Your latest finance data is stored locally and synced when online.</div><div class="modal-footer"><button class="btn btn-secondary" onclick="walletZenSyncNow()">Sync now</button><button class="btn btn-danger" onclick="walletZenSupabaseSignOut()">Sign out</button></div></div></div>
 <div id="toastContainer"></div>
 
@@ -1208,24 +1207,31 @@ function refresh(){const sec=document.querySelector('.section.active');if(sec)re
 
 // ===================== STORAGE =====================
 function save(){try{localStorage.setItem('walletzen_v2',JSON.stringify(DB));if(window.WalletZenCloud)window.WalletZenCloud.queueSync(DB)}catch(e){toast('Storage full — export a backup','error')}}
-function load(){
-  const raw=localStorage.getItem('walletzen_v2');
-  if(raw){try{const p=JSON.parse(raw);DB=Object.assign(DB,p)}catch(e){}}
-  DB.categories=DB.categories||{expense:[],income:[]};
-  DB.settings=DB.settings||{};
-  if(!DB.categories.expense||!DB.categories.expense.length)DB.categories.expense=DEFAULT_EXP_CATS.slice();
-  if(!DB.categories.income||!DB.categories.income.length)DB.categories.income=DEFAULT_INC_CATS.slice();
-  if(!DB.accounts||!DB.accounts.length)DB.accounts=defaultAccounts();
+function normalizeDB(){
+  if(!DB||typeof DB!=='object'||Array.isArray(DB))DB={};
+  if(!DB.categories||typeof DB.categories!=='object'||Array.isArray(DB.categories))DB.categories={expense:[],income:[]};
+  if(!DB.settings||typeof DB.settings!=='object'||Array.isArray(DB.settings))DB.settings={};
+  if(!Array.isArray(DB.categories.expense)||!DB.categories.expense.length)DB.categories.expense=DEFAULT_EXP_CATS.slice();
+  if(!Array.isArray(DB.categories.income)||!DB.categories.income.length)DB.categories.income=DEFAULT_INC_CATS.slice();
+  if(!Array.isArray(DB.accounts)||!DB.accounts.length)DB.accounts=defaultAccounts();
   if(!DB.settings.currency)DB.settings.currency='৳';
   if(!DB.settings.name)DB.settings.name='My Finance';
   // migrate old light/dark setting to new palettes
   if(!DB.settings.palette){DB.settings.palette=DB.settings.theme==='light'?'light':(DB.settings.theme==='dark'?'violet':'shark')}
   if(!DB.settings.gradient)DB.settings.gradient='aurora';
   if(DB.settings.paletteV!==2){DB.settings.palette='green';DB.settings.paletteV=2}
-  ['transactions','subscriptions','loans','goals','budgets'].forEach(k=>{if(!DB[k])DB[k]=[]});
-  if(!DB.biz||typeof DB.biz!=='object')DB.biz=defaultBiz();
+  ['transactions','subscriptions','loans','goals','budgets'].forEach(k=>{if(!Array.isArray(DB[k]))DB[k]=[]});
+  DB.biz=DB.biz&&typeof DB.biz==='object'&&!Array.isArray(DB.biz)?Object.assign(defaultBiz(),DB.biz):defaultBiz();
   ['sectors','items','entries'].forEach(k=>{if(!Array.isArray(DB.biz[k]))DB.biz[k]=[]});
   if(!DB.biz.sectors.length)DB.biz.sectors=DEFAULT_SECTORS.map(x=>Object.assign({},x));
+}
+function load(){
+  const raw=localStorage.getItem('walletzen_v2');
+  if(raw){try{const p=JSON.parse(raw);if(p&&typeof p==='object'&&!Array.isArray(p))DB=Object.assign(DB,p)}catch(e){
+    try{localStorage.setItem('walletzen_corrupt_backup_'+Date.now(),raw)}catch(_){ }
+    console.error('WalletZen could not read its saved local data. A raw recovery copy was retained when storage allowed.');
+  }}
+  normalizeDB();
 }
 
 // ===================== THEME ENGINE =====================
@@ -2201,7 +2207,7 @@ document.addEventListener('keydown',e=>{
 });
 document.addEventListener('click',e=>{if(!e.target.closest('.dropdown'))document.querySelectorAll('.dropdown-menu.open').forEach(d=>d.classList.remove('open'))});
 
-window.WalletZenGetData=()=>DB;window.WalletZenSetCloudData=data=>{if(data&&typeof data==="object"){DB=Object.assign(DB,data);save();refresh()}};
+window.WalletZenGetData=()=>DB;window.WalletZenSetCloudData=(data,replace=false)=>{if(data&&typeof data==="object"&&!Array.isArray(data)){const base={accounts:[],transactions:[],budgets:[],goals:[],subscriptions:[],loans:[],categories:{expense:[],income:[]},settings:{},biz:defaultBiz(),version:2};DB=replace?Object.assign(base,data):Object.assign(DB,data);normalizeDB();save();refresh()}};
 // ===================== INIT =====================
 let walletZenAppInitialized=false;
 function initializeWalletZenApp(){
