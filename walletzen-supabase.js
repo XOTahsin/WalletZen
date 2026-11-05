@@ -230,18 +230,18 @@ function showSyncConflict(local, row, reason) {
   const element = $("wzAccountSync");
   if (element) {
     element.innerHTML =
-      '<div style="font-weight:800;margin-bottom:6px;color:var(--text)">Two different saved copies were found.</div>' +
-      '<div style="margin-bottom:10px">No copy has been overwritten. This device has ' + localCount +
+      '<div style="font-weight:800;margin-bottom:6px;color:var(--text)">' + (row ? 'Two different saved copies were found.' : 'Existing device data needs confirmation.') + '</div>' +
+      '<div style="margin-bottom:10px">No data has been overwritten. This device has ' + localCount +
       ' financial records; the cloud copy has ' + cloudCount + '.</div>' +
       '<div style="display:grid;gap:8px">' +
       '<button type="button" class="btn btn-primary" onclick="walletZenResolveSyncConflict(\'device\')">Keep this device\'s copy' + (row ? '' : ' and upload it') + '</button>' +
       (row ? '<button type="button" class="btn btn-secondary" onclick="walletZenResolveSyncConflict(\'cloud\')">Use the cloud copy</button>' : '<div style="font-size:.72rem;color:var(--text3)">No cloud backup exists for this account yet.</div>') +
       '</div>' +
-      '<div style="font-size:.68rem;margin-top:9px;color:var(--text3)">A JSON backup of the copy being replaced will be downloaded before the choice is applied.</div>';
+      (row ? '<div style="font-size:.68rem;margin-top:9px;color:var(--text3)">A JSON backup of the copy being replaced will be downloaded before the choice is applied.</div>' : '<div style="font-size:.68rem;margin-top:9px;color:var(--text3)">No cloud data exists for this account yet. Keeping this device copy creates the first cloud backup.</div>');
     element.setAttribute("role", "alert");
     element.setAttribute("aria-live", "assertive");
   }
-  if ($("cloudStatus")) $("cloudStatus").textContent = "Sync needs your choice · both copies preserved";
+  if ($("cloudStatus")) $("cloudStatus").textContent = row ? "Sync needs your choice · both copies preserved" : "Confirm device data for cloud backup";
   const modal = $("wzAccountModal");
   if (modal) modal.classList.add("open");
   console.warn("WalletZen sync conflict requires a choice:", reason);
@@ -314,9 +314,13 @@ async function syncWalletData() {
     return false;
   }
   if (conflictContext) {
-    const latest = await fetchCloudRow().catch(() => null);
-    if (latest && conflictContext.row?.updated_at !== latest.updated_at) {
-      refreshConflictRow(latest);
+    try {
+      const latest = await fetchCloudRow();
+      const previousVersion = conflictContext.row?.updated_at || null;
+      const latestVersion = latest?.updated_at || null;
+      if (previousVersion !== latestVersion) refreshConflictRow(latest);
+    } catch (error) {
+      syncMessage("The two-copy choice is still waiting. Reconnect to verify the cloud copy before resolving it.");
     }
     return false;
   }
