@@ -505,7 +505,6 @@ window.walletZenResolveSyncConflict = async choice => {
       return;
     }
     if (choice === "device") {
-      if (context.row && !downloadBackup(context.cloud, "walletzen_cloud_backup_" + new Date().toISOString().slice(0, 10) + ".json")) return;
       if (!context.row) {
         const inserted = await insertCloudSnapshot(current);
         if (inserted.conflict && inserted.row) {
@@ -525,6 +524,7 @@ window.walletZenResolveSyncConflict = async choice => {
           refreshConflictRow(latest);
           return;
         } else {
+          if (!downloadBackup(latest.data, "walletzen_cloud_backup_" + new Date().toISOString().slice(0, 10) + ".json")) return;
           const updatedAt = await compareAndSwapCloudSnapshot(latest, current);
           if (!updatedAt) {
             const newest = await fetchCloudRow();
