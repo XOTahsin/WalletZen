@@ -234,8 +234,8 @@ function showSyncConflict(local, row, reason) {
       '<div style="margin-bottom:10px">No copy has been overwritten. This device has ' + localCount +
       ' financial records; the cloud copy has ' + cloudCount + '.</div>' +
       '<div style="display:grid;gap:8px">' +
-      '<button type="button" class="btn btn-primary" onclick="walletZenResolveSyncConflict(\'device\')">Keep this device\'s copy</button>' +
-      '<button type="button" class="btn btn-secondary" onclick="walletZenResolveSyncConflict(\'cloud\')">Use the cloud copy</button>' +
+      '<button type="button" class="btn btn-primary" onclick="walletZenResolveSyncConflict(\'device\')">Keep this device\'s copy' + (row ? '' : ' and upload it') + '</button>' +
+      (row ? '<button type="button" class="btn btn-secondary" onclick="walletZenResolveSyncConflict(\'cloud\')">Use the cloud copy</button>' : '<div style="font-size:.72rem;color:var(--text3)">No cloud backup exists for this account yet.</div>') +
       '</div>' +
       '<div style="font-size:.68rem;margin-top:9px;color:var(--text3)">A JSON backup of the copy being replaced will be downloaded before the choice is applied.</div>';
     element.setAttribute("role", "alert");
@@ -335,6 +335,12 @@ async function syncWalletData() {
     let row = await fetchCloudRow();
 
     if (!row) {
+      // Legacy local data with no account association must not silently seed a
+      // newly signed-in account. Ask before uploading it to that account.
+      if (!meta.ownerUserId && hasMeaningfulData(local)) {
+        showSyncConflict(local, null, "unclaimed-local-data");
+        return false;
+      }
       const inserted = await insertCloudSnapshot(local);
       if (inserted.conflict) row = inserted.row;
       else if (inserted.row) {
